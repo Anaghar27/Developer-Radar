@@ -1,0 +1,11 @@
+praw
+requests
+groq
+psycopg2-binary
+pgvector
+apache-airflow
+streamlit
+langgraph
+sentence-transformers
+plotly
+python-dotenv
