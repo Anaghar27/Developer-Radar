@@ -1,0 +1,35 @@
+docker compose up -d
+docker compose ps
+
+set -a
+source .env
+set +a
+
+export POSTGRES_HOST=localhost
+export POSTGRES_PORT=5432
+
+
+echo "$POSTGRES_HOST"
+echo "$POSTGRES_PORT"
+echo "$REDDIT_USER_AGENT"
+
+
+python -m ingestion.reddit_ingestor
+docker compose exec postgres psql -U postgres -d developer_intelligence -c "SELECT source, COUNT(*) FROM raw_posts GROUP BY source;"
+docker compose exec postgres psql -U postgres -d developer_intelligence -c "SELECT id, source, title, score, created_at FROM raw_posts WHERE source = 'reddit' ORDER BY created_at DESC LIMIT 5;"
+
+python -m ingestion.hackernews_ingestor
+docker compose exec postgres psql -U postgres -d developer_intelligence -c "SELECT source, COUNT(*) FROM raw_posts GROUP BY source;"
+docker compose exec postgres psql -U postgres -d developer_intelligence -c "SELECT id, source, title, score, created_at FROM raw_posts WHERE source = 'hackernews' ORDER BY created_at DESC LIMIT 5;"
+
+
+python -m ingestion.reddit_ingestor
+python -m ingestion.hackernews_ingestor
+
+docker compose exec postgres psql -U postgres -d developer_intelligence -c "SELECT id, COUNT(*) FROM raw_posts GROUP BY id HAVING COUNT(*) > 1;"
+docker compose exec postgres psql -U postgres -d developer_intelligence -c "SELECT id, source, title, body, url, score, created_at FROM raw_posts ORDER BY created_at DESC LIMIT 5;"
+
+
+
+Checking total news by source:
+docker compose exec postgres psql -U postgres -d developer_intelligence -c "SELECT source, COUNT(*) FROM raw_posts GROUP BY source ORDER BY source;"
