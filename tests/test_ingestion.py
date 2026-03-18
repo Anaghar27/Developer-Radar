@@ -1,6 +1,6 @@
 """Smoke tests for ingestion and storage work."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
 import pytest
@@ -42,7 +42,7 @@ def test_insert_and_dedup(cleanup_test_post):
         "body": "Testing duplicate insert handling",
         "url": "https://example.com/test",
         "score": 1,
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.now(UTC),
     }
 
     insert_raw_post(post)
@@ -82,9 +82,9 @@ def test_reddit_ingestor_returns_posts():
 
 def test_hn_ingestor_returns_posts():
     """Mock Hacker News ingestion and assert three posts are inserted."""
-    topstories_response = Mock()
-    topstories_response.raise_for_status.return_value = None
-    topstories_response.json.return_value = [1, 2, 3]
+    feed_response = Mock()
+    feed_response.raise_for_status.return_value = None
+    feed_response.json.return_value = [1, 2, 3]
 
     def make_item_response(item_id: int) -> Mock:
         response = Mock()
@@ -101,8 +101,11 @@ def test_hn_ingestor_returns_posts():
         return response
 
     def mock_get(url, timeout=10):
-        if url.endswith("/topstories.json"):
-            return topstories_response
+        if any(
+            url.endswith(feed)
+            for feed in ("/topstories.json", "/newstories.json", "/askstories.json")
+        ):
+            return feed_response
         item_id = int(url.rsplit("/", 1)[-1].split(".")[0])
         return make_item_response(item_id)
 

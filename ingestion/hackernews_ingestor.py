@@ -5,6 +5,8 @@ import time
 from datetime import UTC, datetime
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from storage.db_client import insert_raw_post, post_exists
 
@@ -18,21 +20,62 @@ STORY_FEEDS = {
     "askstories": f"{BASE_URL}/askstories.json",
 }
 ITEM_ENDPOINT = f"{BASE_URL}/item/{{item_id}}.json"
+ITEM_FETCH_RETRIES = 3
+ITEM_FETCH_BACKOFF_SECONDS = 1.0
+REQUEST_TIMEOUT_SECONDS = 10
+
+
+def _build_session() -> requests.Session:
+    """Create a requests session with retry policy for transient HTTPS failures."""
+    retry = Retry(
+        total=3,
+        connect=3,
+        read=3,
+        backoff_factor=1.0,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET"}),
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session = requests.Session()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+SESSION = _build_session()
 
 
 def fetch_story_ids(feed_name: str, limit: int = 2500) -> list[int]:
     """Fetch story ids for one Hacker News feed and return the first `limit` ids."""
-    response = requests.get(STORY_FEEDS[feed_name], timeout=10)
+    response = SESSION.get(STORY_FEEDS[feed_name], timeout=REQUEST_TIMEOUT_SECONDS)
     response.raise_for_status()
     story_ids = response.json() or []
     return story_ids[:limit]
 
 
 def fetch_item(item_id: int) -> dict | None:
-    """Fetch a single Hacker News item by id."""
-    response = requests.get(ITEM_ENDPOINT.format(item_id=item_id), timeout=10)
-    response.raise_for_status()
-    return response.json()
+    """Fetch a single Hacker News item by id with retry for transient failures."""
+    for attempt in range(ITEM_FETCH_RETRIES):
+        try:
+            response = SESSION.get(
+                ITEM_ENDPOINT.format(item_id=item_id),
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException:
+            if attempt == ITEM_FETCH_RETRIES - 1:
+                raise
+            logger.warning(
+                "Retrying Hacker News item fetch %s after request failure (attempt %s/%s)",
+                item_id,
+                attempt + 1,
+                ITEM_FETCH_RETRIES,
+                exc_info=True,
+            )
+            time.sleep(ITEM_FETCH_BACKOFF_SECONDS * (attempt + 1))
+
+    return None
 
 
 def should_process_item(item: dict | None) -> bool:

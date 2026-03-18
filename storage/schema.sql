@@ -48,6 +48,9 @@ CREATE INDEX IF NOT EXISTS idx_raw_posts_source
 CREATE INDEX IF NOT EXISTS idx_raw_posts_created_at
     ON raw_posts(created_at);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_aggregates_date_topic_tool
+    ON daily_aggregates(date, topic, tool);
+
 CREATE INDEX IF NOT EXISTS idx_post_embeddings_embedding
     ON post_embeddings
     USING ivfflat (embedding vector_cosine_ops);

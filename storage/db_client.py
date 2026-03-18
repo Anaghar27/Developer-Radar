@@ -135,6 +135,20 @@ def insert_embedding(post_id: str, embedding: list[float]) -> None:
         raise
 
 
+def embedding_exists(post_id: str) -> bool:
+    """Return True when the given post id already exists in post_embeddings."""
+    query = "SELECT EXISTS (SELECT 1 FROM post_embeddings WHERE post_id = %s)"
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (post_id,))
+                result = cur.fetchone()
+                return bool(result[0]) if result else False
+    except psycopg2.Error:
+        logger.exception("Failed to check embedding existence for post: %s", post_id)
+        raise
+
+
 def upsert_daily_aggregate(record: dict) -> None:
     """Insert or update an aggregate row keyed by date, topic, and tool."""
     query = """
