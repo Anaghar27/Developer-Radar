@@ -1,0 +1,14 @@
+devpulse:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "devpulse.duckdb"
+      threads: 4
+      extensions:
+        - postgres_scanner
+      attach:
+        - path: "dbname={{ env_var('POSTGRES_DB', 'developer_intelligence') }} host={{ env_var('POSTGRES_HOST', 'localhost') }} port={{ env_var('POSTGRES_PORT', '5432') }} user={{ env_var('POSTGRES_USER', 'postgres') }} password={{ env_var('POSTGRES_PASSWORD', 'postgres') }}"
+          type: postgres
+          alias: pg
+          read_only: true

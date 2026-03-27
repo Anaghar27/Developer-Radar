@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: postgres
+    database: pg
+    schema: public
+    tables:
+      - name: raw_posts
+        description: "Raw ingested posts from Reddit and Hacker News"
+      - name: processed_posts
+        description: "LLM classification output for each post"

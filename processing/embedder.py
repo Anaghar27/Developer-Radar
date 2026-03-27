@@ -46,14 +46,20 @@ def embed_batch(posts: list[dict]) -> list[tuple[str, list[float]]]:
     return [(post["id"], vector.tolist()) for post, vector in zip(valid_posts, vectors)]
 
 
-def run_embeddings(limit: int = 100):
+def run_embeddings(limit: int = 100, ingest_batch_id: str | None = None):
     """Generate embeddings for posts that do not yet have stored vectors."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
     )
 
-    posts = db_client.fetch_unprocessed_posts(limit)
+    if ingest_batch_id is None:
+        raise ValueError("run_embeddings requires ingest_batch_id for batch-scoped embedding")
+
+    posts = db_client.fetch_batch_posts_without_embeddings(
+        ingest_batch_id=ingest_batch_id,
+        limit=limit,
+    )
     total_fetched = len(posts)
     posts_to_embed = []
     already_embedded = 0

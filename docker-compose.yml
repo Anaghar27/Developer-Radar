@@ -1,3 +1,5 @@
+name: devpulse-platform
+
 services:
   postgres:
     image: pgvector/pgvector:pg15
@@ -21,6 +23,60 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - devpulse_net
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: devpulse_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    networks:
+      - devpulse_net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: devpulse_kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - devpulse_net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - kafka-topics --bootstrap-server kafka:9092 --list || exit 1
+      interval: 10s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: devpulse_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - devpulse_net
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 5s
+      retries: 5
 
   airflow:
     build:
@@ -36,10 +92,14 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-devpulse-airflow-local-secret}
+      POSTGRES_HOST: postgres
+      PYTHONPATH: /opt/airflow/project
     ports:
       - "8080:8080"
     volumes:
       - ./pipeline:/opt/airflow/dags
+      - ./:/opt/airflow/project
     links:
       - postgres:postgres
     entrypoint:
@@ -47,6 +107,57 @@ services:
       - -lc
     command:
       - airflow db migrate && exec airflow webserver
+    networks:
+      - devpulse_net
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-devpulse-airflow-local-secret}
+      POSTGRES_HOST: postgres
+      PYTHONPATH: /opt/airflow/project
+    volumes:
+      - ./pipeline:/opt/airflow/dags
+      - ./:/opt/airflow/project
+    links:
+      - postgres:postgres
+    entrypoint:
+      - /bin/bash
+      - -lc
+    command:
+      - airflow db migrate && exec airflow scheduler
+    networks:
+      - devpulse_net
+
+  api:
+    image: python:3.11-slim
+    container_name: devpulse_api
+    command: echo "API service stub - not yet implemented"
+    networks:
+      - devpulse_net
+
+  dashboard:
+    image: python:3.11-slim
+    container_name: devpulse_dashboard
+    command: echo "Dashboard stub - not yet implemented"
+    networks:
+      - devpulse_net
 
 volumes:
   postgres_data:
+  zookeeper_data:
+
+networks:
+  devpulse_net:
+    driver: bridge

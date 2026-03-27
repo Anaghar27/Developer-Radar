@@ -54,3 +54,68 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_aggregates_date_topic_tool
 CREATE INDEX IF NOT EXISTS idx_post_embeddings_embedding
     ON post_embeddings
     USING ivfflat (embedding vector_cosine_ops);
+
+CREATE TABLE IF NOT EXISTS failed_events (
+    id                SERIAL PRIMARY KEY,
+    event_type        VARCHAR(50) NOT NULL, -- 'ingestion' | 'classification' | 'embedding'
+    payload           JSONB NOT NULL,
+    error_reason      TEXT NOT NULL,
+    attempt_count     INTEGER NOT NULL DEFAULT 1,
+    last_attempted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_failed_events_event_type
+    ON failed_events(event_type);
+
+CREATE INDEX IF NOT EXISTS idx_failed_events_created_at
+    ON failed_events(created_at);
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id           SERIAL PRIMARY KEY,
+    topic        VARCHAR(100) NOT NULL,
+    today_count  INTEGER NOT NULL,
+    rolling_avg  NUMERIC(10,2) NOT NULL,
+    pct_increase NUMERIC(10,2) NOT NULL,
+    triggered_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_triggered_at
+    ON alerts(triggered_at);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_topic
+    ON alerts(topic);
+
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    run_id           VARCHAR(100) PRIMARY KEY,
+    dag_id           VARCHAR(100) NOT NULL,
+    start_time       TIMESTAMPTZ NOT NULL,
+    end_time         TIMESTAMPTZ,
+    duration_seconds NUMERIC(10,2),
+    posts_ingested   INTEGER NOT NULL DEFAULT 0,
+    posts_classified INTEGER NOT NULL DEFAULT 0,
+    posts_failed     INTEGER NOT NULL DEFAULT 0,
+    error_rate       NUMERIC(5,4) NOT NULL DEFAULT 0.0,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_dag_id
+    ON pipeline_runs(dag_id);
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_start_time
+    ON pipeline_runs(start_time);
+
+CREATE TABLE IF NOT EXISTS users (
+    id              SERIAL PRIMARY KEY,
+    email           VARCHAR(255) UNIQUE NOT NULL,
+    hashed_password TEXT NOT NULL,
+    api_key         VARCHAR(64) UNIQUE NOT NULL,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email
+    ON users(email);
+
+CREATE INDEX IF NOT EXISTS idx_users_api_key
+    ON users(api_key);

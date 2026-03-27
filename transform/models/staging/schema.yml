@@ -1,0 +1,76 @@
+version: 2
+
+models:
+  - name: stg_raw_posts
+    description: "Cleaned and typed raw posts from PostgreSQL"
+    columns:
+      - name: post_id
+        description: "Unique post identifier"
+        tests:
+          - not_null
+          - unique
+
+      - name: source
+        description: "Post source platform"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['reddit', 'hackernews']
+
+      - name: title
+        description: "Post title — must not be null after staging cleanup"
+        tests:
+          - not_null
+
+      - name: score
+        description: "Post score / upvotes"
+        tests:
+          - not_null
+
+      - name: post_date
+        description: "Date of post truncated to day"
+        tests:
+          - not_null
+
+  - name: stg_processed_posts
+    description: "Cleaned LLM classification output"
+    columns:
+      - name: post_id
+        description: "Foreign key to stg_raw_posts"
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('stg_raw_posts')
+              field: post_id
+
+      - name: sentiment
+        description: "Classified sentiment"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['positive', 'negative', 'neutral']
+
+      - name: emotion
+        description: "Classified emotion"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['excitement', 'frustration', 'curiosity', 'confusion', 'satisfaction', 'concern', 'neutral']
+
+      - name: topic
+        description: "Classified topic"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['machine_learning', 'devtools', 'career', 'open_source', 'hardware', 'security', 'general']
+
+      - name: controversy_score
+        description: "Controversy score between 0 and 1"
+        tests:
+          - not_null
+
+      - name: tool_mentioned
+        description: "Tool mentioned in post — 'none' if absent"
+        tests:
+          - not_null

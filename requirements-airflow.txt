@@ -1,0 +1,7 @@
+praw
+requests
+psycopg2-binary
+pgvector
+python-dotenv
+kafka-python==2.0.2
+sentence-transformers

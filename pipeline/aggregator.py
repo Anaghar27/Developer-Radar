@@ -91,5 +91,81 @@ def run_aggregation(date: str = None):
     )
 
 
+def detect_volume_spikes(
+    date: str | None = None,
+    lookback_days: int = 7,
+    min_baseline_count: int = 1,
+    min_pct_increase: float = 100.0,
+) -> list[dict]:
+    """Detect topic-level daily volume spikes versus a rolling historical average."""
+    target_date = date or datetime.now(UTC).date().isoformat()
+    query = """
+        WITH today AS (
+            SELECT
+                topic,
+                SUM(post_count) AS today_count
+            FROM daily_aggregates
+            WHERE date = %s
+            GROUP BY topic
+        ),
+        history AS (
+            SELECT
+                topic,
+                AVG(daily_count) AS rolling_avg
+            FROM (
+                SELECT
+                    date,
+                    topic,
+                    SUM(post_count) AS daily_count
+                FROM daily_aggregates
+                WHERE date < %s
+                  AND date >= %s::date - (%s || ' days')::interval
+                GROUP BY date, topic
+            ) grouped_history
+            GROUP BY topic
+        )
+        SELECT
+            t.topic,
+            t.today_count,
+            COALESCE(h.rolling_avg, 0) AS rolling_avg
+        FROM today AS t
+        LEFT JOIN history AS h
+            ON t.topic = h.topic
+    """
+
+    spikes: list[dict] = []
+    with db_client.get_connection() as conn:
+        with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+            cur.execute(query, (target_date, target_date, target_date, lookback_days))
+            rows = cur.fetchall()
+
+    for row in rows:
+        today_count = int(row["today_count"] or 0)
+        rolling_avg = float(row["rolling_avg"] or 0)
+
+        if rolling_avg < min_baseline_count:
+            continue
+
+        pct_increase = ((today_count - rolling_avg) / rolling_avg) * 100
+        if pct_increase < min_pct_increase:
+            continue
+
+        spike = {
+            "topic": row["topic"],
+            "today_count": today_count,
+            "rolling_avg": rolling_avg,
+            "pct_increase": pct_increase,
+        }
+        db_client.insert_alert(
+            topic=spike["topic"],
+            today_count=spike["today_count"],
+            rolling_avg=spike["rolling_avg"],
+            pct_increase=spike["pct_increase"],
+        )
+        spikes.append(spike)
+
+    return spikes
+
+
 if __name__ == "__main__":
     run_aggregation()
