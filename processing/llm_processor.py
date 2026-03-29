@@ -5,6 +5,9 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
+from threading import Lock
 
 import requests
 
@@ -14,9 +17,9 @@ from storage.db_client import insert_failed_event
 
 
 MODELS = [
-    "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
-    "stepfun-ai/step-3-5-flash",
-    "nvidia/llama-3.1-nemotron-nano-8b-instruct:free",
+    "stepfun/step-3.5-flash:free",
+    "google/gemma-3-4b-it:free",
+    "arcee-ai/trinity-large-preview:free",
 ]
 logger = logging.getLogger(__name__)
 MODEL_NAME = "llama-3.1-8b-instant"
@@ -32,7 +35,7 @@ REQUIRED_KEYS = {
 
 def call_openrouter(prompt: str, model: str | None = None) -> str:
     """Send a prompt and return the raw response text with retry/backoff."""
-    delays = [2, 4, 8]
+    delays = [5, 10, 20]
     headers = {
         "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
         "Content-Type": "application/json",
@@ -51,11 +54,30 @@ def call_openrouter(prompt: str, model: str | None = None) -> str:
                 json=payload,
                 timeout=60,
             )
+            if response.status_code == 429:
+                if attempt == 2:
+                    raise requests.exceptions.HTTPError(
+                        f"429 Rate limited after 3 attempts", response=response
+                    )
+                wait = delays[attempt]
+                logger.warning("Rate limited on attempt %s/3, waiting %ss", attempt + 1, wait)
+                time.sleep(wait)
+                continue
             response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"]
+            try:
+                content = response.json()["choices"][0]["message"]["content"]
+            except (ValueError, KeyError) as e:
+                logger.warning(
+                    "Malformed response on attempt %s/3 for model %s: %s — will retry",
+                    attempt + 1, model, type(e).__name__,
+                )
+                if attempt == 2:
+                    raise requests.exceptions.RequestException(f"Malformed response after 3 attempts: {e}")
+                time.sleep(delays[attempt])
+                continue
             return content or ""
-        except requests.RequestException:
-            logger.warning("LLM request failed on attempt %s/3", attempt + 1, exc_info=True)
+        except requests.RequestException as e:
+            logger.warning("LLM request failed on attempt %s/3: %s", attempt + 1, e)
             if attempt == 2:
                 raise
             time.sleep(delays[attempt])
@@ -122,40 +144,73 @@ def classify_post(post: dict, post_id: str) -> dict | None:
         return None
 
 
-def process_batch(limit: int = 100, ingest_batch_id: str | None = None):
-    """Process a batch of unprocessed posts and persist valid classifications."""
+def _process_single(post: dict, index: int, total: int, lock: Lock, counters: dict) -> None:
+    """Classify a single post and persist it. Designed to run in a thread."""
+    post_id = post["id"]
+    post_start = time.time()
+
+    if db_client.post_is_processed(post_id):
+        with lock:
+            counters["skipped"] += 1
+        return
+
+    classification = classify_post(post, post_id=post_id)
+    elapsed = round(time.time() - post_start, 1)
+
+    if classification is None:
+        with lock:
+            counters["failed"] += 1
+        logger.warning("Post %s/%s FAILED [%.1fs]: %s", index, total, elapsed, post_id)
+        return
+
+    db_client.insert_processed_post({**classification, "post_id": post_id})
+    with lock:
+        counters["processed"] += 1
+        done = counters["processed"] + counters["failed"] + counters["skipped"]
+        if done % 10 == 0:
+            logger.info(
+                "Progress [%s/%s] — processed=%s failed=%s skipped=%s",
+                done, total, counters["processed"], counters["failed"], counters["skipped"],
+            )
+    logger.info("Post %s/%s OK [%.1fs]: %s", index, total, elapsed, post_id)
+
+
+def process_batch(limit: int = 100, ingest_batch_id: str | None = None, workers: int = 5):
+    """Process a batch of unprocessed posts in parallel and persist valid classifications."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
     )
 
     posts = db_client.fetch_unprocessed_posts(limit, ingest_batch_id=ingest_batch_id)
-    processed_count = 0
-    skipped_count = 0
-    failed_count = 0
+    total = len(posts)
+    counters = {"processed": 0, "failed": 0, "skipped": 0}
+    lock = Lock()
 
-    for post in posts:
-        post_id = post["id"]
-        if db_client.post_is_processed(post_id):
-            skipped_count += 1
-            continue
-
-        classification = classify_post(post, post_id=post["id"])
-        if classification is None:
-            failed_count += 1
-            logger.warning("Skipping post after classification failure: %s", post_id)
-            continue
-
-        payload = {**classification, "post_id": post_id}
-        db_client.insert_processed_post(payload)
-        processed_count += 1
-
+    batch_start = time.time()
     logger.info(
-        "LLM batch complete: processed=%s skipped=%s failed=%s total=%s",
-        processed_count,
-        skipped_count,
-        failed_count,
-        len(posts),
+        "===== LLM batch START: total_posts=%s workers=%s batch_id=%s start_time=%s =====",
+        total, workers, ingest_batch_id, datetime.now(timezone.utc).isoformat(),
+    )
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(_process_single, post, i, total, lock, counters): post
+            for i, post in enumerate(posts, start=1)
+        }
+        for future in as_completed(futures):
+            if future.exception():
+                logger.exception("Unexpected error in worker: %s", future.exception())
+
+    total_elapsed = round(time.time() - batch_start, 1)
+    logger.info(
+        "===== LLM batch END: processed=%s failed=%s skipped=%s total=%s duration=%.1fs end_time=%s =====",
+        counters["processed"],
+        counters["failed"],
+        counters["skipped"],
+        total,
+        total_elapsed,
+        datetime.now(timezone.utc).isoformat(),
     )
 
 

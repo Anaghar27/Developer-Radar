@@ -70,6 +70,20 @@ def insert_raw_post(post: dict) -> None:
         raise
 
 
+def get_latest_ingested_timestamp(source: str) -> float | None:
+    """Return the MAX created_at for a source as a Unix timestamp, or None if no posts exist."""
+    query = "SELECT EXTRACT(EPOCH FROM MAX(created_at)) FROM raw_posts WHERE source = %s"
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (source,))
+                result = cur.fetchone()
+                return float(result[0]) if result and result[0] else None
+    except psycopg2.Error:
+        logger.exception("Failed to fetch latest ingested timestamp for source: %s", source)
+        return None
+
+
 def post_exists(post_id: str) -> bool:
     """Return True when the given post id already exists in raw_posts."""
     query = "SELECT EXISTS (SELECT 1 FROM raw_posts WHERE id = %s)"

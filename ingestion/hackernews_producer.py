@@ -125,9 +125,10 @@ def map_item(item: dict, ingest_batch_id: str) -> dict:
     }
 
 
-def run(ingest_batch_id: str, limit: int = 75) -> int:
+def run(ingest_batch_id: str, limit: int = 75, since: float | None = None) -> int:
     """
     Publish Hacker News top stories to Kafka raw_posts topic.
+    Only fetches stories newer than `since` (Unix timestamp) if provided.
     Returns the number of messages published.
     """
     logging.basicConfig(
@@ -135,11 +136,18 @@ def run(ingest_batch_id: str, limit: int = 75) -> int:
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
     )
 
+    if since:
+        from datetime import datetime, timezone
+        logger.info("HN: fetching posts newer than %s", datetime.fromtimestamp(since, tz=timezone.utc).isoformat())
+    else:
+        logger.info("HN: no cutoff set, fetching latest posts")
+
     producer = get_kafka_producer()
     published_count = 0
+    skipped_count = 0
 
     try:
-        story_ids = fetch_story_ids(limit=75)
+        story_ids = fetch_story_ids(limit=500)
         for item_id in story_ids:
             if published_count >= limit:
                 break
@@ -149,6 +157,11 @@ def run(ingest_batch_id: str, limit: int = 75) -> int:
                 continue
 
             assert item is not None
+
+            if since and float(item.get("time", 0)) <= since:
+                skipped_count += 1
+                continue
+
             message = map_item(item, ingest_batch_id)
 
             try:
@@ -167,7 +180,7 @@ def run(ingest_batch_id: str, limit: int = 75) -> int:
         producer.flush()
         producer.close()
 
-    logger.info("Hacker News Kafka publish complete: published_total=%s", published_count)
+    logger.info("Hacker News Kafka publish complete: published_total=%s skipped_old=%s", published_count, skipped_count)
     return published_count
 
 

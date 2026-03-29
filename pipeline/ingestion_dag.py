@@ -27,7 +27,7 @@ except ModuleNotFoundError:
 
 
 log = logging.getLogger(__name__)
-PIPELINE_BATCH_SIZE = 200
+PIPELINE_BATCH_SIZE = 300
 
 default_args = {
     "owner": "devpulse",
@@ -47,7 +47,7 @@ dag = DAG(
 
 def _produce(**context) -> None:
     from ingestion import hackernews_producer, reddit_producer
-    from storage.db_client import insert_pipeline_run
+    from storage.db_client import get_latest_ingested_timestamp, insert_pipeline_run
 
     batch_id = context["run_id"]
     insert_pipeline_run(
@@ -55,8 +55,12 @@ def _produce(**context) -> None:
         dag_id="ingestion_pipeline",
         start_time=datetime.now(timezone.utc),
     )
-    r_count = reddit_producer.run(ingest_batch_id=batch_id)
-    hn_count = hackernews_producer.run(ingest_batch_id=batch_id)
+
+    reddit_since = get_latest_ingested_timestamp("reddit")
+    hn_since = get_latest_ingested_timestamp("hackernews")
+
+    r_count = reddit_producer.run(ingest_batch_id=batch_id, since=reddit_since)
+    hn_count = hackernews_producer.run(ingest_batch_id=batch_id, since=hn_since)
     logging.info(f"Published {r_count + hn_count} messages to Kafka")
 
 

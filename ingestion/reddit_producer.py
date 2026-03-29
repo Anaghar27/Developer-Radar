@@ -67,9 +67,50 @@ def map_submission(submission, ingest_batch_id: str) -> dict:
     }
 
 
-def run(ingest_batch_id: str, limit: int = 200) -> int:
+def _publish_submissions(submissions, feed: str, subreddit_name: str, producer, ingest_batch_id: str,
+                         since: float | None, limit: int, published_count: int, seen_ids: set) -> tuple[int, int]:
+    """Iterate submissions from a feed, deduplicate, apply cutoff, and publish to Kafka."""
+    fetched = 0
+    published = 0
+    for submission in submissions:
+        if published_count + published >= limit:
+            break
+
+        fetched += 1
+
+        if submission.id in seen_ids:
+            continue
+
+        if since and feed == "new" and submission.created_utc <= since:
+            break
+
+        if since and feed == "hot" and submission.created_utc <= since:
+            continue
+
+        seen_ids.add(submission.id)
+        message = map_submission(submission, ingest_batch_id)
+
+        try:
+            producer.send(
+                TOPIC_NAME,
+                key=submission.id.encode("utf-8"),
+                value=message,
+            )
+            published += 1
+        except Exception:
+            logger.exception(
+                "Failed to publish Reddit submission %s from r/%s to Kafka",
+                submission.id,
+                subreddit_name,
+            )
+
+    return fetched, published
+
+
+def run(ingest_batch_id: str, limit: int = 200, since: float | None = None) -> int:
     """
-    Publish Reddit posts to Kafka raw_posts topic.
+    Publish Reddit posts from both .new() and .hot() feeds to Kafka.
+    Deduplicates across feeds. Only fetches posts newer than `since` (Unix timestamp) if provided.
     Returns the number of messages published.
     """
     logging.basicConfig(
@@ -77,41 +118,42 @@ def run(ingest_batch_id: str, limit: int = 200) -> int:
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
     )
 
+    if since:
+        from datetime import datetime, timezone
+        logger.info("Reddit: fetching posts newer than %s", datetime.fromtimestamp(since, tz=timezone.utc).isoformat())
+    else:
+        logger.info("Reddit: no cutoff set, fetching latest posts")
+
     reddit = get_reddit_client()
     producer = get_kafka_producer()
     published_count = 0
+    seen_ids: set = set()
 
     try:
         for subreddit_name in SUBREDDITS:
             if published_count >= limit:
                 break
 
-            fetched_count = 0
-            subreddit_published_count = 0
+            subreddit_published = 0
 
             try:
                 subreddit = reddit.subreddit(subreddit_name)
-                for submission in subreddit.hot(limit=500):
-                    if published_count >= limit:
-                        break
 
-                    fetched_count += 1
-                    message = map_submission(submission, ingest_batch_id)
+                _, new_published = _publish_submissions(
+                    subreddit.new(limit=500), "new", subreddit_name,
+                    producer, ingest_batch_id, since, limit, published_count, seen_ids,
+                )
+                published_count += new_published
+                subreddit_published += new_published
 
-                    try:
-                        producer.send(
-                            TOPIC_NAME,
-                            key=submission.id.encode("utf-8"),
-                            value=message,
-                        )
-                        published_count += 1
-                        subreddit_published_count += 1
-                    except Exception:
-                        logger.exception(
-                            "Failed to publish Reddit submission %s from r/%s to Kafka",
-                            getattr(submission, "id", "unknown"),
-                            subreddit_name,
-                        )
+                if published_count < limit:
+                    _, hot_published = _publish_submissions(
+                        subreddit.hot(limit=500), "hot", subreddit_name,
+                        producer, ingest_batch_id, since, limit, published_count, seen_ids,
+                    )
+                    published_count += hot_published
+                    subreddit_published += hot_published
+
             except prawcore_exceptions.PrawcoreException:
                 logger.exception("Failed to fetch posts from r/%s", subreddit_name)
                 continue
@@ -120,10 +162,9 @@ def run(ingest_batch_id: str, limit: int = 200) -> int:
                 continue
 
             logger.info(
-                "Reddit producer complete for r/%s: fetched=%s published=%s",
+                "Reddit producer complete for r/%s: published=%s (new+hot)",
                 subreddit_name,
-                fetched_count,
-                subreddit_published_count,
+                subreddit_published,
             )
     finally:
         producer.flush()
