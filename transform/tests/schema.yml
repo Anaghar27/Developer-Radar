@@ -74,3 +74,65 @@ models:
         description: "Tool mentioned in post — 'none' if absent"
         tests:
           - not_null
+
+  - name: mart_daily_sentiment
+    description: "Daily sentiment rollup by date, topic, tool, source"
+    columns:
+      - name: post_date
+        tests:
+          - not_null
+      - name: topic
+        tests:
+          - not_null
+      - name: post_count
+        tests:
+          - not_null
+      - name: avg_sentiment
+        tests:
+          - not_null
+
+  - name: mart_tool_comparison
+    description: "Sentiment time series per tool per day"
+    columns:
+      - name: post_date
+        tests:
+          - not_null
+      - name: tool
+        tests:
+          - not_null
+      - name: post_count
+        tests:
+          - not_null
+
+  - name: mart_community_divergence
+    description: "Reddit vs HN sentiment delta per topic per day"
+    columns:
+      - name: post_date
+        tests:
+          - not_null
+      - name: topic
+        tests:
+          - not_null
+      - name: sentiment_delta
+        tests:
+          - not_null
+
+  - name: mart_trending_topics
+    description: "7-day rolling avg with spike detection per topic"
+    columns:
+      - name: post_date
+        tests:
+          - not_null
+      - name: topic
+        tests:
+          - not_null
+      - name: today_count
+        tests:
+          - not_null
+      - name: spike_flag
+        tests:
+          - not_null
+      - name: spike_flag
+        tests:
+          - accepted_values:
+              values: [true, false]

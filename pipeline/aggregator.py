@@ -2,7 +2,7 @@
 
 import logging
 from collections import Counter, defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone
 
 from psycopg2 import extras
 
@@ -91,80 +91,49 @@ def run_aggregation(date: str = None):
     )
 
 
-def detect_volume_spikes(
-    date: str | None = None,
-    lookback_days: int = 7,
-    min_baseline_count: int = 1,
-    min_pct_increase: float = 100.0,
-) -> list[dict]:
-    """Detect topic-level daily volume spikes versus a rolling historical average."""
-    target_date = date or datetime.now(UTC).date().isoformat()
-    query = """
-        WITH today AS (
-            SELECT
-                topic,
-                SUM(post_count) AS today_count
-            FROM daily_aggregates
-            WHERE date = %s
-            GROUP BY topic
-        ),
-        history AS (
-            SELECT
-                topic,
-                AVG(daily_count) AS rolling_avg
-            FROM (
-                SELECT
-                    date,
-                    topic,
-                    SUM(post_count) AS daily_count
-                FROM daily_aggregates
-                WHERE date < %s
-                  AND date >= %s::date - (%s || ' days')::interval
-                GROUP BY date, topic
-            ) grouped_history
-            GROUP BY topic
-        )
-        SELECT
-            t.topic,
-            t.today_count,
-            COALESCE(h.rolling_avg, 0) AS rolling_avg
-        FROM today AS t
-        LEFT JOIN history AS h
-            ON t.topic = h.topic
+def detect_volume_spikes(date=None):
     """
+    Detect volume spikes by reading from mart_trending_topics DuckDB mart.
+    Returns list of spike dicts for topics where spike_flag is True.
+    """
+    import duckdb
+    import os
 
-    spikes: list[dict] = []
-    with db_client.get_connection() as conn:
-        with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
-            cur.execute(query, (target_date, target_date, target_date, lookback_days))
-            rows = cur.fetchall()
+    duckdb_path = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
+    target_date = date or datetime.now(timezone.utc).date()
 
-    for row in rows:
-        today_count = int(row["today_count"] or 0)
-        rolling_avg = float(row["rolling_avg"] or 0)
+    try:
+        conn = duckdb.connect(duckdb_path, read_only=True)
+        results = conn.execute("""
+            SELECT
+                topic,
+                today_count,
+                rolling_avg_7d,
+                pct_change,
+                spike_flag
+            FROM mart_trending_topics
+            WHERE post_date = ?
+            AND spike_flag = true
+            ORDER BY pct_change DESC
+        """, [target_date]).fetchall()
+        conn.close()
 
-        if rolling_avg < min_baseline_count:
-            continue
+        spikes = []
+        for row in results:
+            spikes.append({
+                "topic": row[0],
+                "today_count": row[1],
+                "rolling_avg": row[2],
+                "pct_increase": row[3],
+                "spike_flag": row[4],
+            })
 
-        pct_increase = ((today_count - rolling_avg) / rolling_avg) * 100
-        if pct_increase < min_pct_increase:
-            continue
+        logging.info(f"Detected {len(spikes)} volume spikes for {target_date}")
+        return spikes
 
-        spike = {
-            "topic": row["topic"],
-            "today_count": today_count,
-            "rolling_avg": rolling_avg,
-            "pct_increase": pct_increase,
-        }
-        db_client.insert_alert(
-            topic=spike["topic"],
-            today_count=spike["today_count"],
-            rolling_avg=spike["rolling_avg"],
-            pct_increase=spike["pct_increase"],
-        )
-        spikes.append(spike)
-
-    return spikes
+    except Exception as e:
+        logging.error(f"Failed to read mart_trending_topics: {e}")
+        return []
 
 
 if __name__ == "__main__":
