@@ -95,6 +95,8 @@ services:
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-devpulse-airflow-local-secret}
       POSTGRES_HOST: postgres
       PYTHONPATH: /opt/airflow/project
+      DBT_PROJECT_DIR: /opt/airflow/project/transform
+      DBT_DUCKDB_PATH: /opt/airflow/project/transform/devpulse.duckdb
     ports:
       - "8080:8080"
     volumes:
@@ -127,6 +129,8 @@ services:
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-devpulse-airflow-local-secret}
       POSTGRES_HOST: postgres
       PYTHONPATH: /opt/airflow/project
+      DBT_PROJECT_DIR: /opt/airflow/project/transform
+      DBT_DUCKDB_PATH: /opt/airflow/project/transform/devpulse.duckdb
     volumes:
       - ./pipeline:/opt/airflow/dags
       - ./:/opt/airflow/project

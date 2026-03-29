@@ -18,8 +18,39 @@ dag = DAG(
     schedule_interval="0 */6 * * *",   # same schedule as DAG 1
     start_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
     catchup=False,
+    is_paused_upon_creation=False,
     tags=["devpulse", "transformation"],
 )
+
+def _ingestion_execution_date(execution_date, **kwargs):
+    """
+    Resolve which ingestion_pipeline execution date to wait on.
+
+    - Scheduled runs: execution_date falls on a 6-hour boundary (00/06/12/18 UTC,
+      minute=0, second=0). Use exact match so the sensor waits for the ingestion
+      run that belongs to the same slot — not a stale previous run.
+
+    - Manual triggers: execution_date is an arbitrary timestamp. Fall back to the
+      most recent successful ingestion run so the pipeline can proceed immediately.
+    """
+    from airflow.models import DagRun
+    from airflow.utils.state import State
+
+    is_scheduled = (
+        execution_date.minute == 0
+        and execution_date.second == 0
+        and execution_date.microsecond == 0
+        and execution_date.hour % 6 == 0
+    )
+
+    if is_scheduled:
+        return execution_date
+
+    # Manual trigger: find the most recent successful ingestion run
+    runs = DagRun.find(dag_id="ingestion_pipeline", state=State.SUCCESS)
+    if not runs:
+        return execution_date
+    return max(r.execution_date for r in runs)
 
 wait_for_ingestion = ExternalTaskSensor(
     task_id="wait_for_ingestion",
@@ -27,7 +58,7 @@ wait_for_ingestion = ExternalTaskSensor(
     external_task_id="write_pipeline_run_task",
     allowed_states=["success"],
     failed_states=["failed", "skipped"],
-    execution_delta=None,
+    execution_date_fn=_ingestion_execution_date,
     mode="poke",
     poke_interval=30,
     timeout=3600,
@@ -37,9 +68,9 @@ wait_for_ingestion = ExternalTaskSensor(
 
 def _run_dbt(**context):
     """Run all dbt models."""
-    dbt_dir = os.path.join(os.path.dirname(__file__), "..", "transform")
+    dbt_dir = os.getenv("DBT_PROJECT_DIR", os.path.join(os.path.dirname(__file__), "..", "transform"))
     result = subprocess.run(
-        ["dbt", "run", "--profiles-dir", "."],
+        ["dbt", "run", "--profiles-dir", ".", "--no-use-colors"],
         cwd=dbt_dir,
         capture_output=True,
         text=True,
@@ -60,9 +91,9 @@ run_dbt_task = PythonOperator(
 
 def _test_dbt(**context):
     """Run dbt tests — fail the task if any test fails."""
-    dbt_dir = os.path.join(os.path.dirname(__file__), "..", "transform")
+    dbt_dir = os.getenv("DBT_PROJECT_DIR", os.path.join(os.path.dirname(__file__), "..", "transform"))
     result = subprocess.run(
-        ["dbt", "test", "--profiles-dir", "."],
+        ["dbt", "test", "--profiles-dir", ".", "--no-use-colors"],
         cwd=dbt_dir,
         capture_output=True,
         text=True,
@@ -100,7 +131,6 @@ def _detect_alerts(**context):
     """Detect volume spikes from mart_trending_topics and write to alerts table."""
     from pipeline.aggregator import detect_volume_spikes
     from storage.db_client import insert_alert
-    from datetime import datetime, timezone
 
     spikes = detect_volume_spikes()
     for spike in spikes:

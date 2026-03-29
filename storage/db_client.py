@@ -444,10 +444,11 @@ def fetch_failed_events(event_type: str = None, limit: int = 100) -> list[dict]:
 
 
 def insert_alert(topic: str, today_count: int, rolling_avg: float, pct_increase: float) -> None:
-    """Insert a volume spike alert."""
+    """Insert a volume spike alert, skipping if one already exists for this topic today."""
     query = """
-        INSERT INTO alerts (topic, today_count, rolling_avg, pct_increase)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO alerts (topic, today_count, rolling_avg, pct_increase, alert_date)
+        VALUES (%s, %s, %s, %s, CURRENT_DATE)
+        ON CONFLICT (topic, alert_date) DO NOTHING
     """
     try:
         with get_connection() as conn:
