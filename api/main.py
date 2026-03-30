@@ -78,12 +78,18 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(health_router)
 app.include_router(cache_router)
 
-# Implemented on Day 9:
-# from api.routes.posts import router as posts_router
-# from api.routes.trends import router as trends_router
-# from api.routes.tools import router as tools_router
-# from api.routes.community import router as community_router
-# from api.routes.alerts import router as alerts_router
+from api.routes.posts import router as posts_router
+app.include_router(posts_router)
+
+from api.routes.trends import router as trends_router
+from api.routes.tools import router as tools_router
+app.include_router(trends_router)
+app.include_router(tools_router)
+
+from api.routes.community import router as community_router
+from api.routes.alerts import router as alerts_router
+app.include_router(community_router)
+app.include_router(alerts_router)
 
 @app.get("/ping")
 @limiter.limit("60/minute")

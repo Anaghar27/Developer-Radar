@@ -53,9 +53,6 @@ def run_embeddings(limit: int = 100, ingest_batch_id: str | None = None):
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
     )
 
-    if ingest_batch_id is None:
-        raise ValueError("run_embeddings requires ingest_batch_id for batch-scoped embedding")
-
     posts = db_client.fetch_batch_posts_without_embeddings(
         ingest_batch_id=ingest_batch_id,
         limit=limit,

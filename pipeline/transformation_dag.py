@@ -114,10 +114,34 @@ test_dbt_task = PythonOperator(
 
 def _invalidate_cache(**context):
     """
-    Invalidate Redis cache after dbt run.
-    Stub for now — full implementation in Day 9 when FastAPI + Redis are wired.
+    Invalidate Redis cache by calling POST /cache/invalidate on the FastAPI service.
+    Uses the INTERNAL_API_KEY for authentication.
     """
-    logging.info("Cache invalidation stub — Redis not yet wired. Skipping.")
+    import requests
+    import os
+
+    api_url = os.getenv("API_BASE_URL", "http://localhost:8000")
+    internal_key = os.getenv("INTERNAL_API_KEY", "")
+
+    if not internal_key:
+        logging.warning("INTERNAL_API_KEY not set — skipping cache invalidation")
+        return
+
+    try:
+        response = requests.post(
+            f"{api_url}/cache/invalidate",
+            headers={"X-API-Key": internal_key},
+            timeout=10,
+        )
+        if response.status_code == 200:
+            data = response.json()
+            logging.info(f"Cache invalidated — {data.get('keys_deleted', 0)} keys deleted")
+        else:
+            logging.warning(f"Cache invalidation returned {response.status_code}: {response.text}")
+    except requests.exceptions.ConnectionError:
+        logging.warning("FastAPI not reachable — skipping cache invalidation (API may not be running)")
+    except Exception as e:
+        logging.warning(f"Cache invalidation failed: {e}")
 
 
 invalidate_cache_task = PythonOperator(
@@ -153,7 +177,7 @@ detect_alerts_task = PythonOperator(
 
 
 def _is_sunday(**context):
-    """Only proceed to weekly report on Sundays."""
+    """Only proceed to weekly report on Sundays (UTC)."""
     return datetime.now(timezone.utc).weekday() == 6
 
 

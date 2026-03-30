@@ -293,38 +293,62 @@ def fetch_unprocessed_posts(
 
 
 def fetch_batch_posts_without_embeddings(
-    ingest_batch_id: str,
+    ingest_batch_id: str | None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    """Fetch raw posts from one ingest batch that do not yet have embeddings."""
-    ensure_raw_posts_batch_column()
-    query = """
-        SELECT
-            r.id,
-            r.source,
-            r.title,
-            r.body,
-            r.url,
-            r.score,
-            r.created_at,
-            r.ingest_batch_id
-        FROM raw_posts AS r
-        LEFT JOIN post_embeddings AS e
-            ON r.id = e.post_id
-        WHERE r.ingest_batch_id = %s
-          AND e.post_id IS NULL
-        ORDER BY r.created_at DESC
-        LIMIT %s
+    """Fetch raw posts that do not yet have embeddings.
+    When ingest_batch_id is None, returns all posts without embeddings.
+    When ingest_batch_id is provided, scopes to that batch only.
     """
+    ensure_raw_posts_batch_column()
+    if ingest_batch_id is None:
+        query = """
+            SELECT
+                r.id,
+                r.source,
+                r.title,
+                r.body,
+                r.url,
+                r.score,
+                r.created_at,
+                r.ingest_batch_id
+            FROM raw_posts AS r
+            LEFT JOIN post_embeddings AS e
+                ON r.id = e.post_id
+            WHERE e.post_id IS NULL
+            ORDER BY r.created_at DESC
+            LIMIT %s
+        """
+        params = (limit,)
+    else:
+        query = """
+            SELECT
+                r.id,
+                r.source,
+                r.title,
+                r.body,
+                r.url,
+                r.score,
+                r.created_at,
+                r.ingest_batch_id
+            FROM raw_posts AS r
+            LEFT JOIN post_embeddings AS e
+                ON r.id = e.post_id
+            WHERE r.ingest_batch_id = %s
+              AND e.post_id IS NULL
+            ORDER BY r.created_at DESC
+            LIMIT %s
+        """
+        params = (ingest_batch_id, limit)
     try:
         with get_connection() as conn:
             with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
-                cur.execute(query, (ingest_batch_id, limit))
+                cur.execute(query, params)
                 rows = cur.fetchall()
                 return [dict(row) for row in rows]
     except psycopg2.Error:
         logger.exception(
-            "Failed to fetch batch posts without embeddings for batch: %s",
+            "Failed to fetch posts without embeddings for batch: %s",
             ingest_batch_id,
         )
         raise

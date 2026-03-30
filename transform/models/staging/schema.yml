@@ -56,14 +56,14 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['excitement', 'frustration', 'curiosity', 'confusion', 'satisfaction', 'concern', 'neutral']
+              values: ['excited', 'frustrated', 'skeptical', 'curious', 'hopeful', 'neutral']
 
       - name: topic
         description: "Classified topic"
         tests:
           - not_null
           - accepted_values:
-              values: ['machine_learning', 'devtools', 'career', 'open_source', 'hardware', 'security', 'general']
+              values: ['LLM', 'Agents', 'RAG', 'MLOps', 'Python', 'WebDev', 'DevTools', 'Cloud', 'Hardware', 'Security', 'Career', 'OpenSource', 'Other']
 
       - name: controversy_score
         description: "Controversy score between 0 and 1"

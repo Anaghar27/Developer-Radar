@@ -27,7 +27,7 @@ except ModuleNotFoundError:
 
 
 log = logging.getLogger(__name__)
-PIPELINE_BATCH_SIZE = 300
+PIPELINE_BATCH_SIZE = 1000
 
 default_args = {
     "owner": "devpulse",
@@ -149,14 +149,14 @@ consume_task = PythonOperator(
 process_task = PythonOperator(
     task_id="process_task",
     python_callable=_run_processing,
-    op_kwargs={"ingest_batch_id": "{{ run_id }}"},
+    op_kwargs={"ingest_batch_id": None},
     dag=dag,
 )
 
 embed_task = PythonOperator(
     task_id="embed_task",
     python_callable=_run_embeddings,
-    op_kwargs={"ingest_batch_id": "{{ run_id }}"},
+    op_kwargs={"ingest_batch_id": None},
     dag=dag,
 )
 

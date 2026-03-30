@@ -16,19 +16,20 @@ cleaned as (
         -- Validate emotion enum, default to 'neutral' if invalid
         case
             when emotion in (
-                'excitement', 'frustration', 'curiosity',
-                'confusion', 'satisfaction', 'concern', 'neutral'
+                'excited', 'frustrated', 'skeptical',
+                'curious', 'hopeful', 'neutral'
             ) then emotion
             else 'neutral'
         end                                         as emotion,
 
-        -- Validate topic enum, default to 'general' if invalid
+        -- Validate topic enum, default to 'Other' if invalid
         case
             when topic in (
-                'machine_learning', 'devtools', 'career',
-                'open_source', 'hardware', 'security', 'general'
+                'LLM', 'Agents', 'RAG', 'MLOps', 'Python',
+                'WebDev', 'DevTools', 'Cloud', 'Hardware',
+                'Security', 'Career', 'OpenSource', 'Other'
             ) then topic
-            else 'general'
+            else 'Other'
         end                                         as topic,
 
         -- tool_mentioned can be null — coerce to 'none'
