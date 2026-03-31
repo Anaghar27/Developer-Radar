@@ -9,9 +9,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 MODELS = [
+    "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",   # original model — testing if still alive
+    "arcee-ai/trinity-large-preview:free",
     "stepfun/step-3.5-flash:free",
     "google/gemma-3-4b-it:free",
-    "arcee-ai/trinity-large-preview:free",
 ]
 
 PROMPT = (

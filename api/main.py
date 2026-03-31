@@ -91,6 +91,9 @@ from api.routes.alerts import router as alerts_router
 app.include_router(community_router)
 app.include_router(alerts_router)
 
+from api.routes.query import router as query_router
+app.include_router(query_router)
+
 @app.get("/ping")
 @limiter.limit("60/minute")
 async def ping(request: Request):

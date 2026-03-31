@@ -189,11 +189,22 @@ is_sunday_task = ShortCircuitOperator(
 
 
 def _weekly_report(**context):
-    """
-    Generate weekly insight report via Corrective RAG.
-    Stub for now — full implementation in Day 10 when RAG is wired.
-    """
-    logging.info("Weekly report stub — RAG not yet wired. Skipping.")
+    """Generate weekly insight report via Corrective RAG every Sunday."""
+    from rag.corrective_rag import run_corrective_rag
+    from storage.db_client import insert_insight_report
+
+    query = "What are the key developer sentiment trends and tool discussions from the past week?"
+    try:
+        result = run_corrective_rag(query, limit=15)
+        insert_insight_report(
+            query=query,
+            report_text=result["report"],
+            sources=result["sources_used"],
+        )
+        logging.info(f"Weekly report generated: {result['report'][:200]}...")
+    except Exception as e:
+        logging.error(f"Weekly report generation failed: {e}")
+        raise
 
 
 weekly_report_task = PythonOperator(
