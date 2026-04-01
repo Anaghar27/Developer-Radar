@@ -2,9 +2,7 @@
 
 import json
 import re
-from unittest.mock import patch
-
-import numpy as np
+from unittest.mock import MagicMock, patch
 
 from processing.embedder import embed_post
 from processing.llm_processor import _parse_response, classify_post
@@ -144,18 +142,21 @@ def test_classify_post_llm_failure_routes_to_dead_letter():
 
 
 def test_embed_post_shape():
-    """embed_post should return a 384-dimensional embedding vector."""
-    fake_vector = np.zeros(384)
-    with patch("processing.embedder.model.encode", return_value=fake_vector):
-        result = embed_post({"title": "hello", "body": "world"})
+    """embed_post should return a 1536-dimensional embedding vector."""
+    mock_client = MagicMock()
+    mock_client.embeddings.create.return_value.data = [MagicMock(embedding=[0.1] * 1536)]
+    with patch("processing.embedder.get_openai_client", return_value=mock_client), \
+         patch("processing.embedder.insert_embedding"):
+        result = embed_post(post_id="p1", title="hello", body="world")
     assert isinstance(result, list)
-    assert len(result) == 384
+    assert len(result) == 1536
 
 
 def test_embed_post_returns_list():
-    """embed_post should return a Python list rather than a numpy ndarray."""
-    fake_vector = np.zeros(384)
-    with patch("processing.embedder.model.encode", return_value=fake_vector):
-        result = embed_post({"title": "hello", "body": "world"})
+    """embed_post should return a Python list."""
+    mock_client = MagicMock()
+    mock_client.embeddings.create.return_value.data = [MagicMock(embedding=[0.1] * 1536)]
+    with patch("processing.embedder.get_openai_client", return_value=mock_client), \
+         patch("processing.embedder.insert_embedding"):
+        result = embed_post(post_id="p1", title="hello", body="world")
     assert isinstance(result, list)
-    assert not isinstance(result, np.ndarray)

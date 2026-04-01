@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS processed_posts (
 
 CREATE TABLE IF NOT EXISTS post_embeddings (
     post_id TEXT PRIMARY KEY REFERENCES raw_posts(id),
-    embedding vector(384)
+    embedding vector(1536)
 );
 
 CREATE TABLE IF NOT EXISTS daily_aggregates (
@@ -53,7 +53,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_aggregates_date_topic_tool
 
 CREATE INDEX IF NOT EXISTS idx_post_embeddings_embedding
     ON post_embeddings
-    USING ivfflat (embedding vector_cosine_ops);
+    USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 100);
 
 CREATE TABLE IF NOT EXISTS failed_events (
     id                SERIAL PRIMARY KEY,

@@ -5,20 +5,19 @@ from typing import Optional
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
+from openai import OpenAI
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-# Load embedding model once at module level
-_model = None
+_openai_client = None
 
 
-def get_model() -> SentenceTransformer:
-    global _model
-    if _model is None:
-        _model = SentenceTransformer("all-MiniLM-L6-v2")
-    return _model
+def get_openai_client() -> OpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
 
 
 def get_pg_connection():
@@ -37,8 +36,12 @@ def semantic_search(query: str, limit: int = 20) -> list[dict]:
     Returns list of dicts with post_id, title, body, source,
     sentiment, topic, tool_mentioned, score, rank.
     """
-    model = get_model()
-    query_embedding = model.encode(query).tolist()
+    client = get_openai_client()
+    response = client.embeddings.create(
+        input=query[:8000],
+        model="text-embedding-3-small",
+    )
+    query_embedding = response.data[0].embedding
 
     conn = get_pg_connection()
     try:

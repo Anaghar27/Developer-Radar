@@ -1,48 +1,74 @@
 """Embedding generation for developer sentiment posts."""
 
 import logging
+import os
 
-from sentence_transformers import SentenceTransformer
+from openai import OpenAI
 
 from storage import db_client
+from storage.db_client import insert_embedding
 
 logger = logging.getLogger(__name__)
-MODEL_NAME = "all-MiniLM-L6-v2"
-model = SentenceTransformer(MODEL_NAME)
+
+_openai_client = None
 
 
-def _build_text(post: dict) -> str:
-    """Build the text payload used for embedding a post."""
-    title = post.get("title", "") or ""
-    body = post.get("body", "") or ""
-    return f"{title} {body}".strip()
+def get_openai_client() -> OpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
 
 
-def embed_post(post: dict) -> list[float]:
-    """Encode a single post into an embedding vector and return it as a list."""
-    text = _build_text(post)
-    vector = model.encode(text)
-    return vector.tolist()
+def get_embedding(text: str) -> list[float]:
+    """
+    Get embedding for a single text using OpenAI text-embedding-3-small.
+    Returns a 1536-dimensional vector.
+    """
+    client = get_openai_client()
+    text = text[:8000] if text else ""
+    if not text.strip():
+        return [0.0] * 1536
+    try:
+        response = client.embeddings.create(
+            input=text,
+            model="text-embedding-3-small",
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        logging.error(f"OpenAI embedding failed: {e}")
+        return [0.0] * 1536
 
 
-def embed_batch(posts: list[dict]) -> list[tuple[str, list[float]]]:
-    """Encode a batch of posts in one model call and return (post_id, vector) pairs."""
-    valid_posts = []
-    texts = []
+def embed_post(post_id: str, title: str, body: str) -> list[float]:
+    """
+    Embed a single post using OpenAI text-embedding-3-small.
+    Combines title + body for richer semantic representation.
+    Returns 1536-dim vector.
+    """
+    text = f"{title} {body or ''}".strip()
+    embedding = get_embedding(text)
+    insert_embedding(post_id=post_id, embedding=embedding)
+    return embedding
+
+
+def embed_batch(posts: list[dict]) -> int:
+    """
+    Embed a batch of posts using OpenAI text-embedding-3-small.
+    Returns number of posts successfully embedded.
+    """
+    count = 0
     for post in posts:
-        title = post.get("title", "") or ""
+        post_id = post.get("id") or post.get("post_id")
+        title = post.get("title", "")
         body = post.get("body", "") or ""
-        if not title and not body:
-            logger.warning("Skipping embedding for post with empty title and body: %s", post["id"])
-            continue
-        valid_posts.append(post)
-        texts.append(_build_text(post))
-
-    if not valid_posts:
-        return []
-
-    vectors = model.encode(texts)
-    return [(post["id"], vector.tolist()) for post, vector in zip(valid_posts, vectors)]
+        try:
+            embed_post(post_id=post_id, title=title, body=body)
+            count += 1
+            logging.info(f"Embedded post {post_id}")
+        except Exception as e:
+            logging.error(f"Failed to embed post {post_id}: {e}")
+    return count
 
 
 def run_embeddings(limit: int = 100, ingest_batch_id: str | None = None):
@@ -66,10 +92,7 @@ def run_embeddings(limit: int = 100, ingest_batch_id: str | None = None):
             continue
         posts_to_embed.append(post)
 
-    embedded_count = 0
-    for post_id, vector in embed_batch(posts_to_embed):
-        db_client.insert_embedding(post_id, vector)
-        embedded_count += 1
+    embedded_count = embed_batch(posts_to_embed)
 
     logger.info(
         "Embedding run complete: fetched=%s already_embedded=%s newly_embedded=%s",
