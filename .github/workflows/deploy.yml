@@ -35,7 +35,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Deploy to Render
-        if: ${{ secrets.RENDER_DEPLOY_HOOK_URL != '' }}
+        if: ${{ env.RENDER_DEPLOY_HOOK_URL != '' }}
         run: |
           curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" \
             --fail \
