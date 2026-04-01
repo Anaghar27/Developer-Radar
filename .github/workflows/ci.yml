@@ -60,6 +60,11 @@ jobs:
       - name: Install dependencies
         run: uv pip install -r requirements.txt --system
 
+      - name: Enable pgvector extension
+        run: psql -h localhost -U postgres -d developer_intelligence -c "CREATE EXTENSION IF NOT EXISTS vector;"
+        env:
+          PGPASSWORD: postgres
+
       - name: Apply database schema
         run: psql -h localhost -U postgres -d developer_intelligence -f storage/schema.sql
         env:
