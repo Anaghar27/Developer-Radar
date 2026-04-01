@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, Request, Query
+import logging
+import os
 from typing import Optional
-from api.schemas import ToolsListResponse, ToolComparisonResponse
+
+import duckdb
+from fastapi import APIRouter, Depends, Query, Request
+
 from api.auth.dependencies import get_current_user
 from api.cache.redis_client import cache_get, cache_set, make_cache_key
-import duckdb, os, logging
+from api.schemas import ToolComparisonResponse, ToolsListResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -13,7 +17,7 @@ DUCKDB_PATH = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
 @router.get("/tools/compare", response_model=ToolsListResponse, tags=["data"])
 async def compare_tools(
     request: Request,
-    tools: Optional[str] = Query(None, description="Comma-separated tool names e.g. pytorch,tensorflow"),
+    tools: str | None = Query(None, description="Comma-separated tool names e.g. pytorch,tensorflow"),
     days: int = Query(30, ge=1, le=90),
     current_user: dict = Depends(get_current_user),
 ):

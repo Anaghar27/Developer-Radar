@@ -2,7 +2,6 @@
 
 import logging
 
-
 logger = logging.getLogger(__name__)
 
 VALID_SOURCES = {"reddit", "hackernews"}

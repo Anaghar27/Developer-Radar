@@ -1,14 +1,24 @@
-import asyncpg
 import logging
 import os
 from contextlib import asynccontextmanager
 
+import asyncpg
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
+from api.auth.router import router as auth_router
+from api.routes.alerts import router as alerts_router
+from api.routes.cache import router as cache_router
+from api.routes.community import router as community_router
+from api.routes.health import router as health_router
+from api.routes.posts import router as posts_router
+from api.routes.query import router as query_router
+from api.routes.tools import router as tools_router
+from api.routes.trends import router as trends_router
 
 load_dotenv()
 
@@ -37,7 +47,7 @@ async def lifespan(app: FastAPI):
     logger.info("Database pool created")
 
     # Redis connection
-    from api.cache.redis_client import init_redis, close_redis
+    from api.cache.redis_client import close_redis, init_redis
     await init_redis(app)
     logger.info("Redis connected")
 
@@ -70,28 +80,15 @@ app.add_middleware(
 )
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-from api.auth.router import router as auth_router
-from api.routes.health import router as health_router
-from api.routes.cache import router as cache_router
 
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(health_router)
 app.include_router(cache_router)
-
-from api.routes.posts import router as posts_router
 app.include_router(posts_router)
-
-from api.routes.trends import router as trends_router
-from api.routes.tools import router as tools_router
 app.include_router(trends_router)
 app.include_router(tools_router)
-
-from api.routes.community import router as community_router
-from api.routes.alerts import router as alerts_router
 app.include_router(community_router)
 app.include_router(alerts_router)
-
-from api.routes.query import router as query_router
 app.include_router(query_router)
 
 @app.get("/ping")

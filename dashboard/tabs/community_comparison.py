@@ -1,8 +1,9 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
+
 from dashboard.api_client import api_get
-from dashboard.components.filters import topic_filter, days_filter
 from dashboard.components.charts import divergence_chart, metric_row
+from dashboard.components.filters import days_filter, topic_filter
 
 
 def render():

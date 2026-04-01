@@ -8,9 +8,8 @@ from datetime import UTC, datetime
 from dotenv import load_dotenv
 from kafka import KafkaConsumer, KafkaProducer
 
-from processing.validator import validate_post, coerce_message
-from storage.db_client import insert_raw_post, post_exists, insert_failed_event
-
+from processing.validator import coerce_message, validate_post
+from storage.db_client import insert_failed_event, insert_raw_post, post_exists
 
 load_dotenv()
 

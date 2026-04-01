@@ -7,7 +7,6 @@ from typing import Any
 import psycopg2
 from psycopg2 import extras
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -36,7 +35,7 @@ def get_connection():
             user=os.environ["POSTGRES_USER"],
             password=os.environ["POSTGRES_PASSWORD"],
         )
-    except psycopg2.Error as exc:
+    except psycopg2.Error:
         logger.exception("Failed to create PostgreSQL connection")
         raise
 

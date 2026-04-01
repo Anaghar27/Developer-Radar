@@ -1,8 +1,9 @@
-import streamlit as st
 from typing import Optional
 
+import streamlit as st
 
-def source_filter(key: str = "source") -> Optional[str]:
+
+def source_filter(key: str = "source") -> str | None:
     return st.selectbox(
         "Source",
         options=["All", "reddit", "hackernews"],
@@ -11,7 +12,7 @@ def source_filter(key: str = "source") -> Optional[str]:
     ) or None
 
 
-def topic_filter(key: str = "topic") -> Optional[str]:
+def topic_filter(key: str = "topic") -> str | None:
     topics = [
         "All", "LLM", "Agents", "RAG", "MLOps", "Python", "WebDev",
         "DevTools", "Cloud", "Hardware", "Security", "Career", "OpenSource", "Other",
@@ -20,7 +21,7 @@ def topic_filter(key: str = "topic") -> Optional[str]:
     return None if val == "All" else val
 
 
-def sentiment_filter(key: str = "sentiment") -> Optional[str]:
+def sentiment_filter(key: str = "sentiment") -> str | None:
     val = st.selectbox(
         "Sentiment",
         options=["All", "positive", "negative", "neutral"],
@@ -41,7 +42,7 @@ def days_filter(key: str = "days", default: int = 30) -> int:
     )
 
 
-def tool_multiselect(key: str = "tools") -> Optional[str]:
+def tool_multiselect(key: str = "tools") -> str | None:
     tools = st.multiselect(
         "Select tools to compare",
         options=[

@@ -1,8 +1,9 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
+
 from dashboard.api_client import api_get
-from dashboard.components.filters import source_filter, topic_filter, sentiment_filter
 from dashboard.components.charts import metric_row
+from dashboard.components.filters import sentiment_filter, source_filter, topic_filter
 
 
 def render():

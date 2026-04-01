@@ -1,7 +1,6 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
-from datetime import datetime, date
+from datetime import date, datetime
 
+from pydantic import BaseModel, EmailStr, Field
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -28,20 +27,20 @@ class TokenResponse(BaseModel):
 class PostResponse(BaseModel):
     post_id: str
     source: str
-    subreddit: Optional[str]
+    subreddit: str | None
     title: str
     url: str
     score: int
-    sentiment: Optional[str]
-    emotion: Optional[str]
-    topic: Optional[str]
-    tool_mentioned: Optional[str]
-    controversy_score: Optional[float]
+    sentiment: str | None
+    emotion: str | None
+    topic: str | None
+    tool_mentioned: str | None
+    controversy_score: float | None
     post_date: date
     created_at_utc: datetime
 
 class PostsListResponse(BaseModel):
-    posts: List[PostResponse]
+    posts: list[PostResponse]
     total: int
     limit: int
 
@@ -58,11 +57,11 @@ class DailySentimentResponse(BaseModel):
     positive_count: int
     negative_count: int
     neutral_count: int
-    dominant_emotion: Optional[str]
+    dominant_emotion: str | None
     avg_controversy: float
 
 class TrendsListResponse(BaseModel):
-    data: List[DailySentimentResponse]
+    data: list[DailySentimentResponse]
     total: int
 
 
@@ -80,8 +79,8 @@ class ToolComparisonResponse(BaseModel):
     avg_controversy: float
 
 class ToolsListResponse(BaseModel):
-    data: List[ToolComparisonResponse]
-    tools: List[str]
+    data: list[ToolComparisonResponse]
+    tools: list[str]
 
 
 # ── Community ─────────────────────────────────────────────────────────────────
@@ -96,7 +95,7 @@ class CommunityDivergenceResponse(BaseModel):
     sentiment_delta: float
 
 class CommunityListResponse(BaseModel):
-    data: List[CommunityDivergenceResponse]
+    data: list[CommunityDivergenceResponse]
 
 
 # ── Alerts ────────────────────────────────────────────────────────────────────
@@ -110,7 +109,7 @@ class AlertResponse(BaseModel):
     triggered_at: datetime
 
 class AlertsListResponse(BaseModel):
-    alerts: List[AlertResponse]
+    alerts: list[AlertResponse]
     total: int
 
 
@@ -123,7 +122,7 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     query: str
     report: str
-    sources_used: List[str]
+    sources_used: list[str]
     generated_at: datetime
     cached: bool = False
 
@@ -134,8 +133,8 @@ class PipelineRunResponse(BaseModel):
     run_id: str
     dag_id: str
     start_time: datetime
-    end_time: Optional[datetime]
-    duration_seconds: Optional[float]
+    end_time: datetime | None
+    duration_seconds: float | None
     posts_ingested: int
     posts_classified: int
     posts_failed: int
@@ -143,7 +142,7 @@ class PipelineRunResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
-    latest_run: Optional[PipelineRunResponse]
+    latest_run: PipelineRunResponse | None
 
 
 # ── Cache ─────────────────────────────────────────────────────────────────────

@@ -1,10 +1,13 @@
 from fastapi import APIRouter, HTTPException, Request, status
+
+from api.auth.jwt import create_access_token, generate_api_key, hash_password, verify_password
 from api.schemas import (
-    UserRegisterRequest, UserRegisterResponse,
-    TokenRequest, TokenResponse,
+    TokenRequest,
+    TokenResponse,
+    UserRegisterRequest,
+    UserRegisterResponse,
 )
-from api.auth.jwt import hash_password, verify_password, create_access_token, generate_api_key
-from storage.db_client import insert_user, fetch_user_by_email
+from storage.db_client import fetch_user_by_email, insert_user
 
 router = APIRouter()
 

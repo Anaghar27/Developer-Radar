@@ -145,18 +145,52 @@ services:
       - devpulse_net
 
   api:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     container_name: devpulse_api
-    command: echo "API service stub - not yet implemented"
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     networks:
       - devpulse_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./transform:/app/transform
+    restart: unless-stopped
 
   dashboard:
     image: python:3.11-slim
     container_name: devpulse_dashboard
-    command: echo "Dashboard stub - not yet implemented"
+    working_dir: /app
+    command: >
+      bash -c "pip install streamlit plotly pandas requests python-dotenv &&
+               streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0"
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      - API_BASE_URL=http://api:8000
+    depends_on:
+      - api
     networks:
       - devpulse_net
+    volumes:
+      - .:/app
+    restart: unless-stopped
 
 volumes:
   postgres_data:

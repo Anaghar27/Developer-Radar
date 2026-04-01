@@ -10,7 +10,6 @@ from processing.embedder import embed_post
 from processing.llm_processor import _parse_response, classify_post
 from processing.prompts import format_prompt
 
-
 VALID_RESPONSE = json.dumps(
     {
         "sentiment": "positive",

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 try:
     from airflow import DAG
@@ -39,7 +39,7 @@ dag = DAG(
     dag_id="ingestion_pipeline",
     default_args=default_args,
     schedule_interval="0 */6 * * *",
-    start_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    start_date=datetime(2024, 1, 1, tzinfo=UTC),
     catchup=False,
     tags=["devpulse", "ingestion"],
 )
@@ -53,7 +53,7 @@ def _produce(**context) -> None:
     insert_pipeline_run(
         run_id=batch_id,
         dag_id="ingestion_pipeline",
-        start_time=datetime.now(timezone.utc),
+        start_time=datetime.now(UTC),
     )
 
     reddit_since = get_latest_ingested_timestamp("reddit")
@@ -66,7 +66,8 @@ def _produce(**context) -> None:
 
 def _consume(**context):
     batch_id = context["run_id"]
-    from ingestion.consumer import consume_failed_events, run as consume
+    from ingestion.consumer import consume_failed_events
+    from ingestion.consumer import run as consume
 
     summary = consume(ingest_batch_id=batch_id)
     logging.info(f"Consumer summary: {summary}")
@@ -78,16 +79,17 @@ def _consume(**context):
 def _run_processing(ingest_batch_id: str) -> None:
     """Run LLM processing over a batch of posts."""
     try:
-        from processing import llm_processor
-        from llm_client import active_provider
         import os
+
+        from llm_client import active_provider
+        from processing import llm_processor
 
         classification_provider = os.getenv("CLASSIFICATION_PROVIDER", "openrouter")
         log.info(
             "Starting process_task - model=%s batch_id=%s time=%s",
             active_provider(classification_provider),
             ingest_batch_id,
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
         )
         llm_processor.process_batch(limit=PIPELINE_BATCH_SIZE, ingest_batch_id=ingest_batch_id)
         log.info(
@@ -95,7 +97,7 @@ def _run_processing(ingest_batch_id: str) -> None:
             PIPELINE_BATCH_SIZE,
             ingest_batch_id,
         )
-        log.info("Finished process_task - %s", datetime.now(timezone.utc).isoformat())
+        log.info("Finished process_task - %s", datetime.now(UTC).isoformat())
     except Exception:
         log.exception("Task process_task failed")
         raise
@@ -106,14 +108,14 @@ def _run_embeddings(ingest_batch_id: str) -> None:
     try:
         from processing import embedder
 
-        log.info("Starting embed_task - %s", datetime.now(timezone.utc).isoformat())
+        log.info("Starting embed_task - %s", datetime.now(UTC).isoformat())
         embedder.run_embeddings(limit=PIPELINE_BATCH_SIZE, ingest_batch_id=ingest_batch_id)
         log.info(
             "Summary - generated embeddings for a batch of up to %s posts for batch_id=%s",
             PIPELINE_BATCH_SIZE,
             ingest_batch_id,
         )
-        log.info("Finished embed_task - %s", datetime.now(timezone.utc).isoformat())
+        log.info("Finished embed_task - %s", datetime.now(UTC).isoformat())
     except Exception:
         log.exception("Task embed_task failed")
         raise
@@ -124,7 +126,7 @@ def _write_pipeline_run(**context):
 
     run_id = context["run_id"]
     start_time = context["data_interval_start"]
-    end_time = datetime.now(timezone.utc)
+    end_time = datetime.now(UTC)
     duration = (end_time - start_time).total_seconds()
 
     ti = context["ti"]

@@ -6,7 +6,6 @@ import pytest
 
 from storage.db_client import get_connection, insert_raw_post
 
-
 TEST_POST_ID = "test_raw_post_ingestion"
 
 

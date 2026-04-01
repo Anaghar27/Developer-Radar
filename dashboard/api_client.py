@@ -1,17 +1,18 @@
 import os
+from typing import Optional
+
 import requests
 import streamlit as st
-from typing import Optional
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 
-def get_token() -> Optional[str]:
+def get_token() -> str | None:
     """Get JWT token from Streamlit session state."""
     return st.session_state.get("token")
 
 
-def api_get(endpoint: str, params: dict = None) -> Optional[dict]:
+def api_get(endpoint: str, params: dict = None) -> dict | None:
     """
     Authenticated GET request to FastAPI.
     Returns response JSON or None on failure.
@@ -41,7 +42,7 @@ def api_get(endpoint: str, params: dict = None) -> Optional[dict]:
         return None
 
 
-def api_post(endpoint: str, payload: dict) -> Optional[dict]:
+def api_post(endpoint: str, payload: dict) -> dict | None:
     """
     Authenticated POST request to FastAPI.
     Returns response JSON or None on failure.

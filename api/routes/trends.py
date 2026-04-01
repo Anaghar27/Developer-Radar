@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, Request, Query
+import logging
+import os
 from typing import Optional
-from api.schemas import TrendsListResponse, DailySentimentResponse
+
+import duckdb
+from fastapi import APIRouter, Depends, Query, Request
+
 from api.auth.dependencies import get_current_user
 from api.cache.redis_client import cache_get, cache_set, make_cache_key
-import duckdb, os, logging
+from api.schemas import DailySentimentResponse, TrendsListResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -13,9 +17,9 @@ DUCKDB_PATH = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
 @router.get("/trends", response_model=TrendsListResponse, tags=["data"])
 async def get_trends(
     request: Request,
-    topic: Optional[str] = Query(None),
-    tool: Optional[str] = Query(None),
-    source: Optional[str] = Query(None),
+    topic: str | None = Query(None),
+    tool: str | None = Query(None),
+    source: str | None = Query(None),
     days: int = Query(30, ge=1, le=90, description="Number of days to look back"),
     current_user: dict = Depends(get_current_user),
 ):

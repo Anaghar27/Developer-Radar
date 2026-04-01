@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, Request, Query
+import logging
+import os
 from typing import Optional
-from api.schemas import CommunityListResponse, CommunityDivergenceResponse
+
+import duckdb
+from fastapi import APIRouter, Depends, Query, Request
+
 from api.auth.dependencies import get_current_user
 from api.cache.redis_client import cache_get, cache_set, make_cache_key
-import duckdb, os, logging
+from api.schemas import CommunityDivergenceResponse, CommunityListResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -13,7 +17,7 @@ DUCKDB_PATH = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
 @router.get("/community/divergence", response_model=CommunityListResponse, tags=["data"])
 async def get_community_divergence(
     request: Request,
-    topic: Optional[str] = Query(None, description="Filter by topic"),
+    topic: str | None = Query(None, description="Filter by topic"),
     days: int = Query(30, ge=1, le=90),
     current_user: dict = Depends(get_current_user),
 ):

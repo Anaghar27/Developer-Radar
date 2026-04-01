@@ -1,10 +1,11 @@
 import logging
 import os
 from typing import Optional
+
 import psycopg2
 import psycopg2.extras
-from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
+from sentence_transformers import SentenceTransformer
 
 load_dotenv()
 logger = logging.getLogger(__name__)

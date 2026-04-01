@@ -1,9 +1,9 @@
 """Unit tests for Kafka producers, validator, and consumer."""
 
 import sys
+import types
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-import types
 
 if "kafka" not in sys.modules:
     kafka_stub = types.ModuleType("kafka")

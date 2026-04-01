@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, Request, Query
-from api.schemas import AlertsListResponse, AlertResponse
-from api.auth.dependencies import get_current_user
-from storage.db_client import fetch_recent_alerts
 import logging
+
+from fastapi import APIRouter, Depends, Query, Request
+
+from api.auth.dependencies import get_current_user
+from api.schemas import AlertResponse, AlertsListResponse
+from storage.db_client import fetch_recent_alerts
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

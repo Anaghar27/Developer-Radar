@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "dev"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: Test + Lint + dbt compile
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: developer_intelligence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: developer_intelligence
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: nvidia/llama-3.1-nemotron-ultra-253b-v1:free
+      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+      REDDIT_USER_AGENT: devpulse/1.0
+      JWT_SECRET_KEY: ci-test-secret-key-not-for-production
+      INTERNAL_API_KEY: ci-test-internal-key
+      KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+      REDIS_URL: redis://localhost:6379/0
+      DBT_DUCKDB_PATH: transform/devpulse.duckdb
+      API_BASE_URL: http://localhost:8000
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv pip install -r requirements.txt --system
+
+      - name: Apply database schema
+        run: psql -h localhost -U postgres -d developer_intelligence -f storage/schema.sql
+        env:
+          PGPASSWORD: postgres
+
+      - name: Run ruff linting
+        run: |
+          uv pip install ruff --system
+          ruff check . --exclude .venv --exclude __pycache__
+
+      - name: Run pytest
+        run: pytest tests/ -v --tb=short
+
+      - name: dbt compile check
+        run: |
+          cd transform
+          dbt compile --profiles-dir .

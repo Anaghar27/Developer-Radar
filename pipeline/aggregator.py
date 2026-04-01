@@ -8,7 +8,6 @@ from psycopg2 import extras
 
 from storage import db_client
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -96,11 +95,12 @@ def detect_volume_spikes(date=None):
     Detect volume spikes by reading from mart_trending_topics DuckDB mart.
     Returns list of spike dicts for topics where spike_flag is True.
     """
-    import duckdb
     import os
 
+    import duckdb
+
     duckdb_path = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
-    target_date = date or datetime.now(timezone.utc).date()
+    target_date = date or datetime.now(UTC).date()
 
     try:
         conn = duckdb.connect(duckdb_path, read_only=True)

@@ -35,7 +35,7 @@ async def close_redis(app) -> None:
 
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 
-async def cache_get(redis, key: str) -> Optional[Any]:
+async def cache_get(redis, key: str) -> Any | None:
     """
     Get a value from Redis cache.
     Returns deserialized Python object or None if not found.

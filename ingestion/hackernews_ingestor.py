@@ -10,7 +10,6 @@ from urllib3.util.retry import Retry
 
 from storage.db_client import insert_raw_post, post_exists
 
-
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://hacker-news.firebaseio.com/v0"

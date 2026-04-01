@@ -14,8 +14,8 @@ logs/llm/<timestamp>_<query_hash>.json.
 
 import json
 import logging
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -33,8 +33,8 @@ class LLMCall:
     completion_tokens: int
     total_tokens: int
     latency_ms: float
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    post_id: Optional[str] = None   # set for per-post grading calls
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    post_id: str | None = None   # set for per-post grading calls
 
 
 class LLMTracker:
@@ -46,7 +46,7 @@ class LLMTracker:
     def __init__(self, query: str, query_hash: str):
         self.query = query
         self.query_hash = query_hash
-        self.started_at = datetime.now(timezone.utc).isoformat()
+        self.started_at = datetime.now(UTC).isoformat()
         self.calls: list[LLMCall] = []
 
     # ── Recording ─────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ class LLMTracker:
         model: str,
         usage: dict,
         latency_ms: float,
-        post_id: Optional[str] = None,
+        post_id: str | None = None,
     ) -> None:
         """
         Record one LLM call.
@@ -181,7 +181,7 @@ class LLMTracker:
 
     def save(self) -> Path:
         """Persist full log JSON to logs/llm/<timestamp>_<query_hash>.json."""
-        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
         filename = LOGS_DIR / f"{ts}_{self.query_hash[:8]}.json"
         with open(filename, "w") as f:
             json.dump(self.summary(), f, indent=2, default=str)

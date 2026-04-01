@@ -1,0 +1,32 @@
+line-length = 100
+target-version = "py311"
+
+exclude = [
+    ".venv",
+    "__pycache__",
+    ".git",
+    ".pytest_cache",
+    "transform/target",
+    "transform/dbt_packages",
+]
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+]
+
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "F401",   # unused imports — too noisy during development
+    "UP007",  # use X | Y for type hints — keep Optional for clarity
+]
+
+[lint.isort]
+known-first-party = [
+    "api", "ingestion", "pipeline",
+    "processing", "rag", "storage", "dashboard"
+]

@@ -4,13 +4,13 @@ import json
 import logging
 import os
 import time
+from datetime import UTC
 
+import requests
 from dotenv import load_dotenv
 from kafka import KafkaProducer
-import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-
 
 load_dotenv()
 
@@ -138,7 +138,7 @@ def run(ingest_batch_id: str, limit: int = 75, since: float | None = None) -> in
 
     if since:
         from datetime import datetime, timezone
-        logger.info("HN: fetching posts newer than %s", datetime.fromtimestamp(since, tz=timezone.utc).isoformat())
+        logger.info("HN: fetching posts newer than %s", datetime.fromtimestamp(since, tz=UTC).isoformat())
     else:
         logger.info("HN: no cutoff set, fetching latest posts")
 
@@ -167,7 +167,7 @@ def run(ingest_batch_id: str, limit: int = 75, since: float | None = None) -> in
             try:
                 producer.send(
                     TOPIC_NAME,
-                    key=f"hn_{item['id']}".encode("utf-8"),
+                    key=f"hn_{item['id']}".encode(),
                     value=message,
                 )
                 published_count += 1

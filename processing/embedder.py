@@ -6,7 +6,6 @@ from sentence_transformers import SentenceTransformer
 
 from storage import db_client
 
-
 logger = logging.getLogger(__name__)
 MODEL_NAME = "all-MiniLM-L6-v2"
 model = SentenceTransformer(MODEL_NAME)

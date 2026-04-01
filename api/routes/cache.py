@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Request
-from api.schemas import CacheInvalidateResponse
+
 from api.auth.dependencies import require_api_key
 from api.cache.redis_client import cache_invalidate_all
+from api.schemas import CacheInvalidateResponse
 
 router = APIRouter()
 

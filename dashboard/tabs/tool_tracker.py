@@ -1,8 +1,14 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
+
 from dashboard.api_client import api_get
+from dashboard.components.charts import (
+    metric_row,
+    sentiment_bar_chart,
+    sentiment_line_chart,
+    tool_comparison_chart,
+)
 from dashboard.components.filters import days_filter
-from dashboard.components.charts import tool_comparison_chart, sentiment_bar_chart, metric_row, sentiment_line_chart
 
 
 def render():

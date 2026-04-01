@@ -1,5 +1,6 @@
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
@@ -14,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from dashboard.api_client import login, register
+from dashboard.api_client import login, register  # noqa: E402
 
 # ── Auth gate ─────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,13 @@ def show_login():
 # ── Main app ──────────────────────────────────────────────────────────────────
 
 def show_dashboard():
-    from dashboard.tabs import live_feed, trends, community_comparison, tool_tracker, intelligence_reports
+    from dashboard.tabs import (
+        community_comparison,
+        intelligence_reports,
+        live_feed,
+        tool_tracker,
+        trends,
+    )
 
     with st.sidebar:
         st.title("📡 DevPulse")

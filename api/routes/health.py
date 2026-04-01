@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request
+
 from api.schemas import HealthResponse
 from storage.db_client import fetch_latest_pipeline_run
 

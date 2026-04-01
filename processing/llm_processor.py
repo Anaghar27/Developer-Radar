@@ -6,14 +6,13 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from threading import Lock
 
-from llm_client import call_llm, active_provider
+from llm_client import active_provider, call_llm
 from processing.prompts import format_prompt
 from storage import db_client
 from storage.db_client import insert_failed_event
-
 
 logger = logging.getLogger(__name__)
 REQUIRED_KEYS = {
@@ -132,7 +131,7 @@ def process_batch(limit: int = 100, ingest_batch_id: str | None = None, workers:
     batch_start = time.time()
     logger.info(
         "===== LLM batch START: provider=%s total_posts=%s workers=%s batch_id=%s start_time=%s =====",
-        active_provider(os.getenv("CLASSIFICATION_PROVIDER", "openrouter")), total, workers, ingest_batch_id, datetime.now(timezone.utc).isoformat(),
+        active_provider(os.getenv("CLASSIFICATION_PROVIDER", "openrouter")), total, workers, ingest_batch_id, datetime.now(UTC).isoformat(),
     )
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -152,7 +151,7 @@ def process_batch(limit: int = 100, ingest_batch_id: str | None = None, workers:
         counters["skipped"],
         total,
         total_elapsed,
-        datetime.now(timezone.utc).isoformat(),
+        datetime.now(UTC).isoformat(),
     )
 
 

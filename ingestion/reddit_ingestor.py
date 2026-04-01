@@ -9,7 +9,6 @@ from prawcore import exceptions as prawcore_exceptions
 
 from storage.db_client import insert_raw_post, post_exists
 
-
 logger = logging.getLogger(__name__)
 
 SUBREDDITS = [

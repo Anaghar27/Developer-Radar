@@ -3,12 +3,12 @@
 import json
 import logging
 import os
+from datetime import UTC
 
+import praw
 from dotenv import load_dotenv
 from kafka import KafkaProducer
-import praw
 from prawcore import exceptions as prawcore_exceptions
-
 
 load_dotenv()
 
@@ -120,7 +120,7 @@ def run(ingest_batch_id: str, limit: int = 200, since: float | None = None) -> i
 
     if since:
         from datetime import datetime, timezone
-        logger.info("Reddit: fetching posts newer than %s", datetime.fromtimestamp(since, tz=timezone.utc).isoformat())
+        logger.info("Reddit: fetching posts newer than %s", datetime.fromtimestamp(since, tz=UTC).isoformat())
     else:
         logger.info("Reddit: no cutoff set, fetching latest posts")
 

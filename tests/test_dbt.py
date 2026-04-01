@@ -1,6 +1,7 @@
-import pytest
-import duckdb
 import os
+
+import duckdb
+import pytest
 
 DUCKDB_PATH = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
 

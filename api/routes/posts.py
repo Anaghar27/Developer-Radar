@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, Request, Query
+import logging
 from typing import Optional
-from api.schemas import PostsListResponse, PostResponse
+
+from fastapi import APIRouter, Depends, Query, Request
+
 from api.auth.dependencies import get_current_user
 from api.cache.redis_client import cache_get, cache_set, make_cache_key
-import logging
+from api.schemas import PostResponse, PostsListResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -12,10 +14,10 @@ router = APIRouter()
 @router.get("/posts", response_model=PostsListResponse, tags=["data"])
 async def get_posts(
     request: Request,
-    source: Optional[str] = Query(None, description="Filter by source: reddit or hackernews"),
-    topic: Optional[str] = Query(None, description="Filter by topic"),
-    tool: Optional[str] = Query(None, description="Filter by tool_mentioned"),
-    sentiment: Optional[str] = Query(None, description="Filter by sentiment"),
+    source: str | None = Query(None, description="Filter by source: reddit or hackernews"),
+    topic: str | None = Query(None, description="Filter by topic"),
+    tool: str | None = Query(None, description="Filter by tool_mentioned"),
+    sentiment: str | None = Query(None, description="Filter by sentiment"),
     limit: int = Query(50, ge=1, le=1000),
     current_user: dict = Depends(get_current_user),
 ):

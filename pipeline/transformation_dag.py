@@ -1,10 +1,11 @@
-from datetime import datetime, timezone
+import logging
+import os
+import subprocess
+from datetime import UTC, datetime, timezone
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.sensors.external_task import ExternalTaskSensor
-import logging
-import subprocess
-import os
 
 default_args = {
     "owner": "devpulse",
@@ -16,7 +17,7 @@ dag = DAG(
     dag_id="transformation_pipeline",
     default_args=default_args,
     schedule_interval="0 */6 * * *",   # same schedule as DAG 1
-    start_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    start_date=datetime(2024, 1, 1, tzinfo=UTC),
     catchup=False,
     is_paused_upon_creation=False,
     tags=["devpulse", "transformation"],
@@ -117,8 +118,9 @@ def _invalidate_cache(**context):
     Invalidate Redis cache by calling POST /cache/invalidate on the FastAPI service.
     Uses the INTERNAL_API_KEY for authentication.
     """
-    import requests
     import os
+
+    import requests
 
     api_url = os.getenv("API_BASE_URL", "http://localhost:8000")
     internal_key = os.getenv("INTERNAL_API_KEY", "")
@@ -178,7 +180,7 @@ detect_alerts_task = PythonOperator(
 
 def _is_sunday(**context):
     """Only proceed to weekly report on Sundays (UTC)."""
-    return datetime.now(timezone.utc).weekday() == 6
+    return datetime.now(UTC).weekday() == 6
 
 
 is_sunday_task = ShortCircuitOperator(
