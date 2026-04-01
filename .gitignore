@@ -35,3 +35,7 @@ airflow_logs/
 .idea/
 .vscode/
 *.swp
+
+# Artifacts
+
+/artifacts

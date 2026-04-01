@@ -55,7 +55,7 @@ def api_post(endpoint: str, payload: dict) -> Optional[dict]:
             f"{API_BASE_URL}{endpoint}",
             headers=headers,
             json=payload,
-            timeout=60,
+            timeout=180,
         )
         response.raise_for_status()
         return response.json()

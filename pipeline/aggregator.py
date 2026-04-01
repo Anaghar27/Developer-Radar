@@ -120,6 +120,9 @@ def detect_volume_spikes(date=None):
 
         spikes = []
         for row in results:
+            if row[0] is None:
+                logging.warning("Skipping spike row with null topic: %s", row)
+                continue
             spikes.append({
                 "topic": row[0],
                 "today_count": row[1],

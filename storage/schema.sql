@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS daily_aggregates (
 
 CREATE TABLE IF NOT EXISTS insight_reports (
     id SERIAL PRIMARY KEY,
-    query TEXT,
+    query TEXT UNIQUE,
     report_text TEXT,
     sources_used TEXT[],
     generated_at TIMESTAMP DEFAULT NOW()

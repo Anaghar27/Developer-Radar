@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 from dashboard.api_client import api_get, api_post
 
 
@@ -37,6 +36,11 @@ def render():
             # Report
             st.subheader("Report")
             st.markdown(result["report"])
+
+            st.caption(
+                "This report is grounded entirely in posts fetched from Hacker News and Reddit — the model cannot fabricate claims. "
+                "Each paragraph cites [1], [2] etc. referring to the source URLs listed below."
+            )
 
             # Sources
             sources = result.get("sources_used", [])

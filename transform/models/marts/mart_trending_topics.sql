@@ -8,6 +8,7 @@ daily_counts as (
         topic,
         count(*)                                    as today_count
     from enriched
+    where topic is not null
     group by post_date, topic
 ),
 

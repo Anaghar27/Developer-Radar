@@ -45,6 +45,11 @@ def render():
     latest_date = df["post_date"].max()
     latest_df = df[df["post_date"] == latest_date]
     divergence_chart(latest_df, title=f"Sentiment Delta by Topic ({latest_date.date()})")
+    st.caption(
+        "Each bar shows Reddit sentiment minus HN sentiment for that topic on the most recent day. "
+        "Positive (green) = Reddit is more positive than HN. Negative (red) = HN is more positive than Reddit. "
+        "Near zero = both communities agree."
+    )
 
     # Reddit vs HN line comparison
     import plotly.graph_objects as go
@@ -53,11 +58,11 @@ def render():
         daily = df.groupby("post_date")[["reddit_sentiment", "hn_sentiment"]].mean().reset_index()
         fig.add_trace(go.Scatter(
             x=daily["post_date"], y=daily["reddit_sentiment"],
-            name="Reddit", line=dict(color="#FF4500")
+            name="Reddit", line=dict(color="#FF4500", width=2)
         ))
         fig.add_trace(go.Scatter(
             x=daily["post_date"], y=daily["hn_sentiment"],
-            name="Hacker News", line=dict(color="#FF6600")
+            name="Hacker News", line=dict(color="#00B4D8", width=2)
         ))
         fig.update_layout(
             title="Reddit vs HN Sentiment Over Time",
@@ -66,6 +71,11 @@ def render():
             height=400,
         )
         st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "Reddit (orange) vs Hacker News (blue) average daily sentiment over the selected period. "
+            "When lines diverge, the two communities have opposing reactions to the same topics. "
+            "When they converge, sentiment is broadly shared across both platforms."
+        )
 
     with st.expander("View raw data"):
         st.dataframe(df, use_container_width=True, hide_index=True)

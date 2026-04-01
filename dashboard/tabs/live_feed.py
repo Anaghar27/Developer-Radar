@@ -18,7 +18,7 @@ def render():
     with col3:
         sentiment = sentiment_filter("lf_sentiment")
     with col4:
-        limit = st.number_input("Max posts", min_value=10, max_value=200, value=50, step=10)
+        limit = st.number_input("Max posts", min_value=10, max_value=1000, value=50, step=10)
 
     # Fetch data
     params = {"limit": limit}
@@ -48,7 +48,8 @@ def render():
     avg_score = df["controversy_score"].mean() if "controversy_score" in df.columns else 0
 
     metric_row([
-        {"label": "Total Posts", "value": total},
+        {"label": "Total in DB", "value": total},
+        {"label": "Showing", "value": len(posts)},
         {"label": "Positive", "value": pos},
         {"label": "Neutral", "value": neu},
         {"label": "Negative", "value": neg},
@@ -64,4 +65,9 @@ def render():
         df[available_cols],
         use_container_width=True,
         hide_index=True,
+    )
+    st.caption(
+        "Each row is one post ingested from Reddit or Hacker News and classified by the LLM. "
+        "Use filters above to narrow by source, topic, or sentiment. "
+        "Controversy score reflects how polarising the post was — higher means more divided reactions."
     )

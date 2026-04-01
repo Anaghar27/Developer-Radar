@@ -69,10 +69,22 @@ def divergence_chart(df: pd.DataFrame, title: str = "Reddit vs HN Sentiment Delt
 
 
 def tool_comparison_chart(df: pd.DataFrame, title: str = "Tool Sentiment Comparison"):
-    """Line chart comparing avg_sentiment across tools over time."""
+    """Line+marker chart comparing avg_sentiment across tools over time."""
     if df.empty:
         st.info("No tool comparison data available.")
         return
+
+    # Only warn about sparse tools when the chart has few tools selected
+    # (not when showing all 300+ tools at once — the message would be enormous)
+    points_per_tool = df.groupby("tool").size()
+    sparse_tools = points_per_tool[points_per_tool == 1].index.tolist()
+    if sparse_tools and df["tool"].nunique() <= 10:
+        st.warning(
+            f"{'These tools have' if len(sparse_tools) > 1 else 'This tool has'} only 1 data point "
+            f"— shown as a dot, not a line: {', '.join(sparse_tools)}. "
+            f"Widen the date range to see trend lines."
+        )
+
     fig = px.line(
         df,
         x="post_date",
@@ -81,7 +93,9 @@ def tool_comparison_chart(df: pd.DataFrame, title: str = "Tool Sentiment Compari
         title=title,
         labels={"avg_sentiment": "Avg Sentiment", "post_date": "Date"},
         template="plotly_dark",
+        markers=True,  # show dots so single-point tools are visible
     )
+    fig.update_traces(marker=dict(size=8))
     fig.update_layout(
         yaxis=dict(range=[-1.1, 1.1]),
         height=400,

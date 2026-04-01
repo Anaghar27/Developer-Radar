@@ -79,8 +79,16 @@ def _run_processing(ingest_batch_id: str) -> None:
     """Run LLM processing over a batch of posts."""
     try:
         from processing import llm_processor
+        from llm_client import active_provider
+        import os
 
-        log.info("Starting process_task - %s", datetime.now(timezone.utc).isoformat())
+        classification_provider = os.getenv("CLASSIFICATION_PROVIDER", "openrouter")
+        log.info(
+            "Starting process_task - model=%s batch_id=%s time=%s",
+            active_provider(classification_provider),
+            ingest_batch_id,
+            datetime.now(timezone.utc).isoformat(),
+        )
         llm_processor.process_batch(limit=PIPELINE_BATCH_SIZE, ingest_batch_id=ingest_batch_id)
         log.info(
             "Summary - processed a batch of up to %s posts for batch_id=%s",

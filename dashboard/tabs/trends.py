@@ -43,8 +43,38 @@ def render():
     st.divider()
 
     # Charts
-    sentiment_line_chart(df, title="Sentiment Over Time")
-    sentiment_bar_chart(df, x_col="post_date", title="Post Volume by Sentiment")
+    # When no topic filter is applied, aggregate across all topics per day
+    # to avoid 13 overlapping lines making the chart unreadable
+    if not topic:
+        chart_df = df.groupby("post_date").agg(
+            avg_sentiment=("avg_sentiment", "mean"),
+            positive_count=("positive_count", "sum"),
+            negative_count=("negative_count", "sum"),
+            neutral_count=("neutral_count", "sum"),
+            post_count=("post_count", "sum"),
+        ).reset_index()
+        sentiment_line_chart(chart_df, title="Overall Sentiment Over Time (All Topics)")
+        st.caption(
+            "Average daily sentiment across all topics combined. "
+            "Values above 0 indicate positive community mood; below 0 indicate negative. "
+            "Select a specific topic above to see its individual trend line."
+        )
+        sentiment_bar_chart(chart_df, x_col="post_date", title="Post Volume by Sentiment")
+        st.caption(
+            "Daily post count split by sentiment. "
+            "Taller green bars mean more positive posts that day; taller red bars mean more negative posts."
+        )
+    else:
+        sentiment_line_chart(df, title=f"Sentiment Over Time — {topic}")
+        st.caption(
+            f"Daily average sentiment for the '{topic}' topic. "
+            "Watch for sustained dips (growing frustration) or rises (growing excitement) over time."
+        )
+        sentiment_bar_chart(df, x_col="post_date", title="Post Volume by Sentiment")
+        st.caption(
+            f"Volume of positive, neutral, and negative posts about '{topic}' per day. "
+            "Spikes in volume often coincide with a new release, incident, or viral discussion."
+        )
 
     # Raw data expander
     with st.expander("View raw data"):

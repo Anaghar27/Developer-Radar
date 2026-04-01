@@ -2,7 +2,7 @@
 
 import json
 import re
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 
@@ -97,8 +97,8 @@ def test_parse_response_missing_key():
 
 
 def test_classify_post_mocked():
-    """classify_post should return parsed JSON when call_openrouter is mocked."""
-    with patch("processing.llm_processor.call_openrouter", return_value=VALID_RESPONSE):
+    """classify_post should return parsed JSON when call_llm is mocked."""
+    with patch("processing.llm_processor.call_llm", return_value=VALID_RESPONSE):
         result = classify_post({"title": "test", "body": "test body"}, post_id="post-1")
 
     assert isinstance(result, dict)
@@ -112,51 +112,28 @@ def test_classify_post_mocked():
     }.issubset(result.keys())
 
 
-def test_classify_post_3_model_fallback():
+def test_classify_post_invalid_response_routes_to_dead_letter():
     """
-    When the first two models fail, classify_post() should try the third model.
-    If the third succeeds, it should return parsed output and not call insert_failed_event.
+    When call_llm returns an unparseable response, classify_post() returns None
+    and insert_failed_event is called once.
     """
-    from processing.llm_processor import MODELS
-
-    call_count = {"n": 0}
-    spy = MagicMock()
-
-    def mock_call_openrouter(prompt, model=None):
-        spy(prompt, model=model)
-        call_count["n"] += 1
-        if call_count["n"] < 3:
-            raise Exception(f"Simulated failure for model {model}")
-        return json.dumps(
-            {
-                "sentiment": "positive",
-                "emotion": "curious",
-                "topic": "Python",
-                "tool_mentioned": "pytorch",
-                "controversy_score": 1,
-                "reasoning": "The post is positive about a Python tool.",
-            }
-        )
-
-    with patch("processing.llm_processor.call_openrouter", side_effect=mock_call_openrouter):
+    with patch("processing.llm_processor.call_llm", return_value="not valid json"):
         with patch("processing.llm_processor.insert_failed_event") as mock_dead_letter:
             result = classify_post(
                 {"title": "Test post about PyTorch", "body": "Some body text here"},
                 post_id="test_123",
             )
-            assert result is not None
-            assert result["sentiment"] == "positive"
-            assert call_count["n"] == 3
-            assert [call.kwargs["model"] for call in spy.call_args_list] == MODELS
-            mock_dead_letter.assert_not_called()
+            assert result is None
+            mock_dead_letter.assert_called_once()
+            assert mock_dead_letter.call_args.kwargs["event_type"] == "classification"
 
 
-def test_classify_post_all_models_fail_routes_to_dead_letter():
+def test_classify_post_llm_failure_routes_to_dead_letter():
     """
-    When all 3 models fail, classify_post() returns None
+    When call_llm raises an exception, classify_post() returns None
     and insert_failed_event is called once.
     """
-    with patch("processing.llm_processor.call_openrouter", side_effect=Exception("API down")):
+    with patch("processing.llm_processor.call_llm", side_effect=Exception("API down")):
         with patch("processing.llm_processor.insert_failed_event") as mock_dead_letter:
             result = classify_post(
                 {"title": "Test post title here", "body": "Some body text"},
@@ -164,8 +141,7 @@ def test_classify_post_all_models_fail_routes_to_dead_letter():
             )
             assert result is None
             mock_dead_letter.assert_called_once()
-            call_args = mock_dead_letter.call_args
-            assert call_args.kwargs["event_type"] == "classification"
+            assert mock_dead_letter.call_args.kwargs["event_type"] == "classification"
 
 
 def test_embed_post_shape():

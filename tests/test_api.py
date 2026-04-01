@@ -10,6 +10,7 @@ def client():
     """TestClient with mocked Redis and db pool — no live services needed."""
     mock_pool = AsyncMock()
     mock_pool.fetch = AsyncMock(return_value=[])
+    mock_pool.fetchrow = AsyncMock(return_value=None)
     mock_pool.close = AsyncMock()
 
     mock_redis = AsyncMock()

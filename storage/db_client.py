@@ -222,17 +222,25 @@ def upsert_daily_aggregate(record: dict) -> None:
 
 
 def insert_insight_report(query: str, report_text: str, sources: list[str]) -> None:
-    """Insert a generated insight report and its source post ids."""
+    """
+    Upsert a generated insight report.
+    ON CONFLICT on query hash updates the report and timestamp so repeated
+    pipeline runs (e.g. after a crash before cache_set) never produce duplicate rows.
+    """
     sql = """
         INSERT INTO insight_reports (query, report_text, sources_used)
         VALUES (%s, %s, %s)
+        ON CONFLICT (query) DO UPDATE
+            SET report_text  = EXCLUDED.report_text,
+                sources_used = EXCLUDED.sources_used,
+                generated_at = now()
     """
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, (query, report_text, sources))
     except psycopg2.Error:
-        logger.exception("Failed to insert insight report for query: %s", query)
+        logger.exception("Failed to upsert insight report for query: %s", query)
         raise
 
 

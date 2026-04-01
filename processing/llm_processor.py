@@ -9,20 +9,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from threading import Lock
 
-import requests
-
+from llm_client import call_llm, active_provider
 from processing.prompts import format_prompt
 from storage import db_client
 from storage.db_client import insert_failed_event
 
 
-MODELS = [
-    "stepfun/step-3.5-flash:free",
-    "google/gemma-3-4b-it:free",
-    "arcee-ai/trinity-large-preview:free",
-]
 logger = logging.getLogger(__name__)
-MODEL_NAME = "llama-3.1-8b-instant"
 REQUIRED_KEYS = {
     "sentiment",
     "emotion",
@@ -31,58 +24,6 @@ REQUIRED_KEYS = {
     "controversy_score",
     "reasoning",
 }
-
-
-def call_openrouter(prompt: str, model: str | None = None) -> str:
-    """Send a prompt and return the raw response text with retry/backoff."""
-    delays = [5, 10, 20]
-    headers = {
-        "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model or os.environ.get("OPENROUTER_MODEL", MODEL_NAME),
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0,
-    }
-
-    for attempt in range(3):
-        try:
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=60,
-            )
-            if response.status_code == 429:
-                if attempt == 2:
-                    raise requests.exceptions.HTTPError(
-                        f"429 Rate limited after 3 attempts", response=response
-                    )
-                wait = delays[attempt]
-                logger.warning("Rate limited on attempt %s/3, waiting %ss", attempt + 1, wait)
-                time.sleep(wait)
-                continue
-            response.raise_for_status()
-            try:
-                content = response.json()["choices"][0]["message"]["content"]
-            except (ValueError, KeyError) as e:
-                logger.warning(
-                    "Malformed response on attempt %s/3 for model %s: %s — will retry",
-                    attempt + 1, model, type(e).__name__,
-                )
-                if attempt == 2:
-                    raise requests.exceptions.RequestException(f"Malformed response after 3 attempts: {e}")
-                time.sleep(delays[attempt])
-                continue
-            return content or ""
-        except requests.RequestException as e:
-            logger.warning("LLM request failed on attempt %s/3: %s", attempt + 1, e)
-            if attempt == 2:
-                raise
-            time.sleep(delays[attempt])
-
-    raise RuntimeError("LLM request failed after retries")
 
 
 def _parse_response(raw: str) -> dict | None:
@@ -124,19 +65,20 @@ def classify_post(post: dict, post_id: str) -> dict | None:
     """Classify one raw post with the LLM and return parsed structured output."""
     try:
         prompt = format_prompt(post.get("title", ""), post.get("body", ""))
-        last_exception = None
-        for attempt, model in enumerate(MODELS):
-            try:
-                raw_response = call_openrouter(prompt, model=model)
-                return _parse_response(raw_response)
-            except Exception as exc:
-                last_exception = exc
-                logging.warning(f"Attempt {attempt + 1} failed with model {model}: {exc}")
-                continue
+        classification_provider = os.getenv("CLASSIFICATION_PROVIDER", "openrouter")
+        try:
+            raw_response = call_llm(prompt, max_tokens=512, temperature=0.0, provider=classification_provider)
+            result = _parse_response(raw_response)
+            if result is not None:
+                return result
+            logger.warning("Invalid classification structure from %s for post %s", active_provider(classification_provider), post_id)
+        except Exception as exc:
+            logger.warning("LLM call failed via %s for post %s: %s", active_provider(classification_provider), post_id, exc)
+
         insert_failed_event(
             event_type="classification",
             payload={"post_id": post_id, "title": post.get("title", "")[:200]},
-            error_reason=f"All 3 models failed. Last error: {str(last_exception)}",
+            error_reason=f"LLM classification failed via {active_provider(classification_provider)}",
         )
         return None
     except Exception:
@@ -189,8 +131,8 @@ def process_batch(limit: int = 100, ingest_batch_id: str | None = None, workers:
 
     batch_start = time.time()
     logger.info(
-        "===== LLM batch START: total_posts=%s workers=%s batch_id=%s start_time=%s =====",
-        total, workers, ingest_batch_id, datetime.now(timezone.utc).isoformat(),
+        "===== LLM batch START: provider=%s total_posts=%s workers=%s batch_id=%s start_time=%s =====",
+        active_provider(os.getenv("CLASSIFICATION_PROVIDER", "openrouter")), total, workers, ingest_batch_id, datetime.now(timezone.utc).isoformat(),
     )
 
     with ThreadPoolExecutor(max_workers=workers) as executor:

@@ -16,7 +16,7 @@ async def get_posts(
     topic: Optional[str] = Query(None, description="Filter by topic"),
     tool: Optional[str] = Query(None, description="Filter by tool_mentioned"),
     sentiment: Optional[str] = Query(None, description="Filter by sentiment"),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -77,6 +77,13 @@ async def get_posts(
             params.append(sentiment)
             idx += 1
 
+        count_query = query.replace(
+            "SELECT\n                r.id::text              AS post_id,\n                r.source,\n                NULL::text              AS subreddit,\n                r.title,\n                r.url,\n                COALESCE(r.score, 0)    AS score,\n                p.sentiment,\n                p.emotion,\n                p.topic,\n                p.tool_mentioned,\n                p.controversy_score,\n                r.created_at::date      AS post_date,\n                r.created_at            AS created_at_utc",
+            "SELECT COUNT(*)"
+        )
+        total_row = await pool.fetchrow(count_query, *params)
+        total = total_row[0] if total_row else 0
+
         query += f" ORDER BY r.created_at DESC LIMIT ${idx}"
         params.append(limit)
 
@@ -86,7 +93,8 @@ async def get_posts(
     except Exception as e:
         logger.error(f"Posts query failed: {e}")
         posts = []
+        total = 0
 
-    result = PostsListResponse(posts=posts, total=len(posts), limit=limit)
+    result = PostsListResponse(posts=posts, total=total, limit=limit)
     await cache_set(redis, cache_key, result.model_dump())
     return result

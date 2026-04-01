@@ -10,6 +10,17 @@ from api.schemas import QueryRequest, QueryResponse
 from rag.corrective_rag import make_query_hash, run_corrective_rag
 from storage.db_client import insert_insight_report
 
+_FAILED_REPORT_PREFIXES = (
+    "Insight generation failed",
+    "No relevant posts",
+    "Rate limit",
+    "Provider returned error",
+)
+
+
+def _is_failed_report(report: str) -> bool:
+    return any(report.startswith(p) for p in _FAILED_REPORT_PREFIXES)
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -37,9 +48,13 @@ async def query_insights(
     # ── Step 1: Cache hit ──────────────────────────────────────────────────────
     cached = await cache_get(redis, cache_key)
     if cached:
-        logger.info(f"RAG cache hit for query: '{body.query[:60]}'")
-        cached["cached"] = True
-        return QueryResponse(**cached)
+        if _is_failed_report(cached.get("report", "")):
+            logger.warning("Stale failed report found in cache — evicting and re-running pipeline")
+            await redis.delete(cache_key)
+        else:
+            logger.info(f"RAG cache hit for query: '{body.query[:60]}'")
+            cached["cached"] = True
+            return QueryResponse(**cached)
 
     # ── Step 2: Cache miss — run pipeline in thread pool ──────────────────────
     logger.info(f"RAG cache miss — running pipeline for: '{body.query[:60]}'")
@@ -56,26 +71,35 @@ async def query_insights(
             detail=f"RAG pipeline error: {str(e)}",
         )
 
-    # ── Step 3: Persist to PostgreSQL (non-fatal) ──────────────────────────────
-    try:
-        insert_insight_report(
-            query=body.query,
-            report_text=result["report"],
-            sources=result["sources_used"],
-        )
-    except Exception as e:
-        logger.warning(f"Failed to persist insight report: {e}")
+    report = result["report"]
+    report_failed = _is_failed_report(report)
 
-    # ── Step 4: Cache and return ───────────────────────────────────────────────
+    # ── Step 3: Persist to PostgreSQL — only on success ───────────────────────
+    if not report_failed:
+        try:
+            insert_insight_report(
+                query=body.query,
+                report_text=report,
+                sources=result["sources_used"],
+            )
+        except Exception as e:
+            logger.warning(f"Failed to persist insight report: {e}")
+    else:
+        logger.warning("Skipping DB persist — report indicates failure: %s", report[:120])
+
+    # ── Step 4: Cache and return — only cache successful reports ──────────────
     payload = {
         "query": result["query"],
-        "report": result["report"],
+        "report": report,
         "sources_used": result["sources_used"],
         "generated_at": result["generated_at"].isoformat()
         if isinstance(result["generated_at"], datetime)
         else result["generated_at"],
         "cached": False,
     }
-    await cache_set(redis, cache_key, payload, ttl=RAG_TTL)
+    if not report_failed:
+        await cache_set(redis, cache_key, payload, ttl=RAG_TTL)
+    else:
+        logger.warning("Skipping Redis cache — report indicates failure, will retry on next request")
 
     return QueryResponse(**payload)
