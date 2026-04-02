@@ -11,18 +11,19 @@ try:
 except ModuleNotFoundError:
     class DAG:  # type: ignore[no-redef]
         def __init__(self, *args, **kwargs):
-            self.args = args
-            self.kwargs = kwargs
+            self.dag_id = args[0] if args else kwargs.get("dag_id")
             self.tasks = []
 
     class PythonOperator:  # type: ignore[no-redef]
         def __init__(self, *args, **kwargs):
             self.task_id = kwargs.get("task_id")
+            self.downstream_list: list = []
             dag = kwargs.get("dag")
             if dag is not None and hasattr(dag, "tasks"):
                 dag.tasks.append(self)
 
         def __rshift__(self, other):
+            self.downstream_list.append(other)
             return other
 
 
