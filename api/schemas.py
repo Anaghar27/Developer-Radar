@@ -128,6 +128,7 @@ class QueryResponse(BaseModel):
     sources_used: list[str]
     generated_at: datetime
     cached: bool = False
+    query_variants: int = 1
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

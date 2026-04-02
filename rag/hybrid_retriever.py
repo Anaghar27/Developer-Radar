@@ -125,20 +125,53 @@ def reciprocal_rank_fusion(
     ]
 
 
-def retrieve(query: str, limit: int = 20) -> list[dict]:
+def retrieve(query: str, limit: int = 20, expanded_queries: list[str] | None = None) -> list[dict]:
     """
-    Main entry point — runs hybrid retrieval and returns
-    top `limit` results ranked by RRF score.
+    Hybrid retrieval with optional query expansion.
+
+    If expanded_queries provided, retrieves for each query variant
+    and merges results via RRF for better recall.
+
+    Args:
+        query: Original query string
+        limit: Max results to return
+        expanded_queries: Optional list of query variants from expand_query()
+
+    Returns:
+        Top `limit` results ranked by RRF score.
     """
-    logger.info(f"Hybrid retrieval for query: '{query[:80]}'")
+    queries = expanded_queries if expanded_queries else [query]
+    logger.info(f"Hybrid retrieval for {len(queries)} query variants, limit={limit}")
 
-    semantic = semantic_search(query, limit=limit)
-    keyword = keyword_search(query, limit=limit)
+    all_semantic = []
+    all_keyword = []
 
-    logger.info(f"Semantic: {len(semantic)} results, Keyword: {len(keyword)} results")
+    for q in queries:
+        semantic = semantic_search(q, limit=limit)
+        keyword = keyword_search(q, limit=limit)
+        all_semantic.extend(semantic)
+        all_keyword.extend(keyword)
 
-    fused = reciprocal_rank_fusion(semantic, keyword)
+    # Deduplicate by post_id before fusion — keep highest similarity_score
+    seen_semantic: dict[str, dict] = {}
+    for post in all_semantic:
+        pid = post["post_id"]
+        if pid not in seen_semantic or \
+           post.get("similarity_score", 0) > seen_semantic[pid].get("similarity_score", 0):
+            seen_semantic[pid] = post
+
+    seen_keyword: dict[str, dict] = {}
+    for post in all_keyword:
+        pid = post["post_id"]
+        if pid not in seen_keyword or \
+           post.get("similarity_score", 0) > seen_keyword[pid].get("similarity_score", 0):
+            seen_keyword[pid] = post
+
+    fused = reciprocal_rank_fusion(
+        list(seen_semantic.values()),
+        list(seen_keyword.values()),
+    )
     top = fused[:limit]
 
-    logger.info(f"After RRF fusion: {len(top)} results")
+    logger.info(f"After multi-query RRF fusion: {len(top)} results")
     return top
