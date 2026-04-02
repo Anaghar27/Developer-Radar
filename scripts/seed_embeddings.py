@@ -6,8 +6,8 @@ Usage:
     python -m scripts.seed_embeddings
 """
 import logging
-import sys
 import os
+import sys
 
 # Ensure project root is on sys.path when run as a plain script
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

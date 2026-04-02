@@ -7,7 +7,7 @@ Usage:
 """
 import os
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import psycopg2
 from dotenv import load_dotenv
@@ -105,7 +105,7 @@ def seed():
         password=os.getenv("POSTGRES_PASSWORD"),
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     inserted_raw = 0
     inserted_processed = 0
 
