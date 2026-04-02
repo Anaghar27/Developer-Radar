@@ -3,7 +3,8 @@ praw
 requests
 psycopg2-binary
 pgvector
-apache-airflow==2.10.4
+# apache-airflow is installed via Docker base image (2.10.4) — do not pin here
+# apache-airflow==2.10.4
 streamlit
 plotly
 python-dotenv
