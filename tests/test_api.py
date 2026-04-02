@@ -153,3 +153,102 @@ def test_cache_invalidate_requires_api_key(client):
     # No X-API-Key header → require_api_key raises 403
     response = client.post("/cache/invalidate")
     assert response.status_code == 403
+
+
+# ── Password reset ─────────────────────────────────────────────────────────────
+
+def test_forgot_password_dev_mode_returns_token(client):
+    """When SMTP is not configured, reset token is returned directly in the response."""
+    with patch("api.auth.router.fetch_user_by_email", return_value={
+        "id": 1, "email": "user@devpulse.com", "is_active": True,
+    }), patch("api.auth.router.create_reset_token"), \
+       patch("api.auth.router.send_reset_email", return_value=False):
+        response = client.post("/auth/forgot-password", json={"email": "user@devpulse.com"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reset_token"] is not None
+    assert len(body["reset_token"]) > 0
+
+
+def test_forgot_password_smtp_configured_no_token_in_response(client):
+    """When SMTP is configured and email is sent, reset token is NOT returned in the response."""
+    with patch("api.auth.router.fetch_user_by_email", return_value={
+        "id": 1, "email": "user@devpulse.com", "is_active": True,
+    }), patch("api.auth.router.create_reset_token"), \
+       patch("api.auth.router.send_reset_email", return_value=True):
+        response = client.post("/auth/forgot-password", json={"email": "user@devpulse.com"})
+
+    assert response.status_code == 200
+    assert response.json().get("reset_token") is None
+    assert "message" in response.json()
+
+
+def test_forgot_password_unknown_email_returns_200(client):
+    """Unknown email still returns 200 — never reveal whether an email is registered."""
+    with patch("api.auth.router.fetch_user_by_email", return_value=None):
+        response = client.post("/auth/forgot-password", json={"email": "ghost@nowhere.com"})
+
+    assert response.status_code == 200
+    assert response.json().get("reset_token") is None
+
+
+def test_forgot_password_inactive_account_returns_200(client):
+    """Inactive account behaves the same as unknown email — no token, no error."""
+    with patch("api.auth.router.fetch_user_by_email", return_value={
+        "id": 2, "email": "inactive@devpulse.com", "is_active": False,
+    }):
+        response = client.post("/auth/forgot-password", json={"email": "inactive@devpulse.com"})
+
+    assert response.status_code == 200
+    assert response.json().get("reset_token") is None
+
+
+def test_reset_password_success(client):
+    """Valid token and matching passwords → 200 and password is updated."""
+    with patch("api.auth.router.fetch_reset_token", return_value={"id": 10, "user_id": 1}), \
+         patch("api.auth.router.update_user_password") as mock_update, \
+         patch("api.auth.router.consume_reset_token") as mock_consume:
+        response = client.post("/auth/reset-password", json={
+            "token": "valid-token-abc",
+            "new_password": "newpass123",
+        })
+
+    assert response.status_code == 200
+    assert "successfully" in response.json()["message"].lower()
+    mock_update.assert_called_once_with(1, mock_update.call_args[0][1])
+    mock_consume.assert_called_once_with(10)
+
+
+def test_reset_password_invalid_token(client):
+    """Invalid or expired token → 400."""
+    with patch("api.auth.router.fetch_reset_token", return_value=None):
+        response = client.post("/auth/reset-password", json={
+            "token": "bad-token",
+            "new_password": "newpass123",
+        })
+
+    assert response.status_code == 400
+    assert "invalid" in response.json()["detail"].lower()
+
+
+def test_reset_password_too_short(client):
+    """Password shorter than 8 characters → 422 validation error."""
+    response = client.post("/auth/reset-password", json={
+        "token": "some-token",
+        "new_password": "short",
+    })
+    assert response.status_code == 422
+
+
+def test_reset_password_consumes_token_only_once(client):
+    """consume_reset_token is called exactly once per successful reset."""
+    with patch("api.auth.router.fetch_reset_token", return_value={"id": 99, "user_id": 5}), \
+         patch("api.auth.router.update_user_password"), \
+         patch("api.auth.router.consume_reset_token") as mock_consume:
+        client.post("/auth/reset-password", json={
+            "token": "one-time-token",
+            "new_password": "securepass99",
+        })
+
+    mock_consume.assert_called_once_with(99)

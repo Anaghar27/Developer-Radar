@@ -794,3 +794,67 @@ def delete_user(user_id: int) -> None:
     except psycopg2.Error:
         logger.exception("Failed to delete user: %s", user_id)
         raise
+
+
+# ── Password reset tokens ────────────────────────────────────────────────────
+
+
+def create_reset_token(user_id: int, token_hash: str, expires_at) -> None:
+    """Store a hashed password reset token. Replaces any existing unused token for the user."""
+    delete_query = "DELETE FROM password_reset_tokens WHERE user_id = %s AND used_at IS NULL"
+    insert_query = """
+        INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+        VALUES (%s, %s, %s)
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(delete_query, (user_id,))
+                cur.execute(insert_query, (user_id, token_hash, expires_at))
+    except psycopg2.Error:
+        logger.exception("Failed to create reset token for user: %s", user_id)
+        raise
+
+
+def fetch_reset_token(token_hash: str) -> dict | None:
+    """Fetch a valid (unused, non-expired) reset token record. Returns dict or None."""
+    query = """
+        SELECT id, user_id, token_hash, expires_at, used_at
+        FROM password_reset_tokens
+        WHERE token_hash = %s
+          AND used_at IS NULL
+          AND expires_at > NOW()
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+                cur.execute(query, (token_hash,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+    except psycopg2.Error:
+        logger.exception("Failed to fetch reset token")
+        raise
+
+
+def consume_reset_token(token_id: int) -> None:
+    """Mark a reset token as used so it cannot be reused."""
+    query = "UPDATE password_reset_tokens SET used_at = NOW() WHERE id = %s"
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (token_id,))
+    except psycopg2.Error:
+        logger.exception("Failed to consume reset token: %s", token_id)
+        raise
+
+
+def update_user_password(user_id: int, hashed_password: str) -> None:
+    """Update a user's hashed password."""
+    query = "UPDATE users SET hashed_password = %s WHERE id = %s"
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (hashed_password, user_id))
+    except psycopg2.Error:
+        logger.exception("Failed to update password for user: %s", user_id)
+        raise

@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 import requests
 import streamlit as st
@@ -81,6 +80,38 @@ def login(email: str, password: str) -> bool:
         return False
     except Exception as e:
         st.error(f"Login failed: {e}")
+        return False
+
+
+def forgot_password(email: str) -> dict | None:
+    """Request a password reset token. Returns response dict or None on error."""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/auth/forgot-password",
+            json={"email": email},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        st.error(f"Request failed: {e}")
+        return None
+
+
+def reset_password(token: str, new_password: str) -> bool:
+    """Submit a reset token and new password. Returns True on success."""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/auth/reset-password",
+            json={"token": token, "new_password": new_password},
+            timeout=10,
+        )
+        if response.status_code == 200:
+            return True
+        st.error(response.json().get("detail", "Reset failed."))
+        return False
+    except Exception as e:
+        st.error(f"Reset failed: {e}")
         return False
 
 

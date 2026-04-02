@@ -149,6 +149,23 @@ class HealthResponse(BaseModel):
     latest_run: PipelineRunResponse | None
 
 
+# ── Password reset ────────────────────────────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    reset_token: str | None = None  # OTP returned in dev mode when SMTP is not configured
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8)
+
+class ResetPasswordResponse(BaseModel):
+    message: str
+
+
 # ── Cache ─────────────────────────────────────────────────────────────────────
 
 class CacheInvalidateResponse(BaseModel):
