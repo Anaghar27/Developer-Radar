@@ -2,12 +2,11 @@
 
 import json
 import logging
-import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import UTC, datetime, timezone
-from threading import Lock
+from datetime import UTC, datetime
+from threading import Event, Lock
 
 from llm_client import active_provider
 from processing.llm_client import call_llm
@@ -61,24 +60,57 @@ def _parse_response(raw: str) -> dict | None:
     return parsed
 
 
-def classify_post(post: dict, post_id: str) -> dict | None:
-    """Classify one raw post with the LLM and return parsed structured output."""
+def _probe_openrouter() -> bool:
+    """Send a minimal request to check OpenRouter availability before batch starts."""
+    try:
+        call_llm("Reply with the word OK.", max_tokens=5, provider="openrouter")
+        return True
+    except Exception as exc:
+        logger.warning("OpenRouter probe failed — will use gpt-4o-mini for this batch: %s", exc)
+        return False
+
+
+def classify_post(post: dict, post_id: str, openai_fallback: Event) -> dict | None:
+    """Classify one raw post with the LLM and return parsed structured output.
+
+    Uses the openai_fallback Event to coordinate provider selection across threads:
+    - If the event is not set → try OpenRouter first
+    - If OpenRouter fails → set the event and retry this post with gpt-4o-mini
+    - If the event is already set → go directly to gpt-4o-mini
+    """
     try:
         prompt = format_prompt(post.get("title", ""), post.get("body", ""))
-        classification_provider = os.getenv("CLASSIFICATION_PROVIDER", "openrouter")
-        try:
-            raw_response = call_llm(prompt, max_tokens=512, temperature=0.0, provider=classification_provider)
-            result = _parse_response(raw_response)
-            if result is not None:
-                return result
-            logger.warning("Invalid classification structure from %s for post %s", active_provider(classification_provider), post_id)
-        except Exception as exc:
-            logger.warning("LLM call failed via %s for post %s: %s", active_provider(classification_provider), post_id, exc)
+
+        # --- Try OpenRouter (if not already switched) ---
+        if not openai_fallback.is_set():
+            try:
+                raw = call_llm(prompt, max_tokens=512, provider="openrouter")
+                result = _parse_response(raw)
+                if result is not None:
+                    return result
+                logger.warning("Invalid structure from OpenRouter for post %s", post_id)
+            except Exception as exc:
+                if not openai_fallback.is_set():
+                    openai_fallback.set()
+                    logger.warning(
+                        "OpenRouter failed — switching entire batch to gpt-4o-mini: %s", exc
+                    )
+
+        # --- Use gpt-4o-mini (probe failed, or OpenRouter just failed above) ---
+        if openai_fallback.is_set():
+            try:
+                raw = call_llm(prompt, max_tokens=512, provider="openai", model="gpt-4o-mini")
+                result = _parse_response(raw)
+                if result is not None:
+                    return result
+                logger.warning("Invalid structure from gpt-4o-mini for post %s", post_id)
+            except Exception as exc:
+                logger.warning("gpt-4o-mini failed for post %s: %s", post_id, exc)
 
         insert_failed_event(
             event_type="classification",
             payload={"post_id": post_id, "title": post.get("title", "")[:200]},
-            error_reason=f"LLM classification failed via {active_provider(classification_provider)}",
+            error_reason="Classification failed via all providers",
         )
         return None
     except Exception:
@@ -86,7 +118,9 @@ def classify_post(post: dict, post_id: str) -> dict | None:
         return None
 
 
-def _process_single(post: dict, index: int, total: int, lock: Lock, counters: dict) -> None:
+def _process_single(
+    post: dict, index: int, total: int, lock: Lock, counters: dict, openai_fallback: Event
+) -> None:
     """Classify a single post and persist it. Designed to run in a thread."""
     post_id = post["id"]
     post_start = time.time()
@@ -96,7 +130,7 @@ def _process_single(post: dict, index: int, total: int, lock: Lock, counters: di
             counters["skipped"] += 1
         return
 
-    classification = classify_post(post, post_id=post_id)
+    classification = classify_post(post, post_id=post_id, openai_fallback=openai_fallback)
     elapsed = round(time.time() - post_start, 1)
 
     if classification is None:
@@ -129,15 +163,21 @@ def process_batch(limit: int = 100, ingest_batch_id: str | None = None, workers:
     counters = {"processed": 0, "failed": 0, "skipped": 0}
     lock = Lock()
 
+    # Probe OpenRouter once — decide provider for the entire batch
+    openai_fallback = Event()
+    if not _probe_openrouter():
+        openai_fallback.set()
+
+    provider_label = "openai/gpt-4o-mini" if openai_fallback.is_set() else active_provider("openrouter")
     batch_start = time.time()
     logger.info(
         "===== LLM batch START: provider=%s total_posts=%s workers=%s batch_id=%s start_time=%s =====",
-        active_provider(os.getenv("CLASSIFICATION_PROVIDER", "openrouter")), total, workers, ingest_batch_id, datetime.now(UTC).isoformat(),
+        provider_label, total, workers, ingest_batch_id, datetime.now(UTC).isoformat(),
     )
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(_process_single, post, i, total, lock, counters): post
+            executor.submit(_process_single, post, i, total, lock, counters, openai_fallback): post
             for i, post in enumerate(posts, start=1)
         }
         for future in as_completed(futures):

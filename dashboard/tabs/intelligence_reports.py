@@ -26,41 +26,8 @@ def render():
     if submitted and query.strip():
         with st.spinner("Running Corrective RAG pipeline... (first query may take 30-60s)"):
             result = api_post("/query", {"query": query.strip(), "limit": limit})
-
         if result:
-            # Cache indicator
-            if result.get("cached"):
-                st.success("⚡ Served from cache")
-            else:
-                st.success("✅ Fresh report generated")
-
-            # Report
-            st.subheader("Report")
-            st.markdown(result["report"])
-
-            st.caption(
-                "This report is grounded entirely in posts fetched from Hacker News and Reddit — the model cannot fabricate claims. "
-                "Each paragraph cites [1], [2] etc. referring to the source URLs listed below."
-            )
-
-            # Sources
-            sources = result.get("sources_used", [])
-            if sources:
-                st.subheader(f"Sources ({len(sources)})")
-                for i, src in enumerate(sources, 1):
-                    if src.startswith("http"):
-                        st.markdown(f"{i}. [{src}]({src})")
-                    else:
-                        st.markdown(f"{i}. `{src}`")
-
-            # Metadata
-            with st.expander("Report metadata"):
-                st.json({
-                    "query": result.get("query"),
-                    "generated_at": result.get("generated_at"),
-                    "cached": result.get("cached"),
-                    "sources_count": len(sources),
-                })
+            st.session_state["rag_result"] = result
 
     elif submitted:
         st.warning("Please enter a question.")
@@ -90,8 +57,40 @@ def render():
         with st.spinner(f"Running query: '{sq}'..."):
             result = api_post("/query", {"query": sq, "limit": 10})
         if result:
-            st.subheader("Report")
-            st.markdown(result["report"])
+            st.session_state["rag_result"] = result
+
+    # ── Display result (persists across reruns via session state) ─────────────
+    result = st.session_state.get("rag_result")
+    if result:
+        if result.get("cached"):
+            st.success("⚡ Served from cache")
+        else:
+            st.success("✅ Fresh report generated")
+
+        st.subheader("Report")
+        st.markdown(result["report"])
+
+        st.caption(
+            "This report is grounded entirely in posts fetched from Hacker News and Reddit — the model cannot fabricate claims. "
+            "Each paragraph cites [1], [2] etc. referring to the source URLs listed below."
+        )
+
+        sources = result.get("sources_used", [])
+        if sources:
+            st.subheader(f"Sources ({len(sources)})")
+            for i, src in enumerate(sources, 1):
+                if src.startswith("http"):
+                    st.markdown(f"{i}. [{src}]({src})")
+                else:
+                    st.markdown(f"{i}. `{src}`")
+
+        with st.expander("Report metadata"):
+            st.json({
+                "query": result.get("query"),
+                "generated_at": result.get("generated_at"),
+                "cached": result.get("cached"),
+                "sources_count": len(sources),
+            })
 
     # ── Alerts section ────────────────────────────────────────────────────────
     st.divider()

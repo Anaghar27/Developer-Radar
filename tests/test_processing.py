@@ -2,6 +2,7 @@
 
 import json
 import re
+from threading import Event
 from unittest.mock import MagicMock, patch
 
 from processing.embedder import embed_post
@@ -34,11 +35,13 @@ def test_format_prompt_empty_body():
 
 
 def test_format_prompt_truncation():
-    """format_prompt should truncate long bodies to 500 chars plus ellipsis."""
-    prompt = format_prompt("Title", "x" * 3000)
+    """format_prompt should truncate body to (2000 - title_len) chars plus ellipsis."""
+    title = "Title"
+    prompt = format_prompt(title, "x" * 3000)
     match = re.search(r"Post body: (.*)\nReturn exactly this structure:", prompt, re.DOTALL)
     assert match is not None
-    assert len(match.group(1)) <= 503
+    expected_budget = max(200, 2000 - len(title))
+    assert len(match.group(1)) <= expected_budget + 3  # +3 for "..."
 
 
 def test_parse_response_valid():
@@ -96,7 +99,7 @@ def test_parse_response_missing_key():
 def test_classify_post_mocked():
     """classify_post should return parsed JSON when call_llm is mocked."""
     with patch("processing.llm_processor.call_llm", return_value=VALID_RESPONSE):
-        result = classify_post({"title": "test", "body": "test body"}, post_id="post-1")
+        result = classify_post({"title": "test", "body": "test body"}, post_id="post-1", openai_fallback=Event())
 
     assert isinstance(result, dict)
     assert {
@@ -119,6 +122,7 @@ def test_classify_post_invalid_response_routes_to_dead_letter():
             result = classify_post(
                 {"title": "Test post about PyTorch", "body": "Some body text here"},
                 post_id="test_123",
+                openai_fallback=Event(),
             )
             assert result is None
             mock_dead_letter.assert_called_once()
@@ -135,6 +139,7 @@ def test_classify_post_llm_failure_routes_to_dead_letter():
             result = classify_post(
                 {"title": "Test post title here", "body": "Some body text"},
                 post_id="test_456",
+                openai_fallback=Event(),
             )
             assert result is None
             mock_dead_letter.assert_called_once()

@@ -156,6 +156,7 @@ services:
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy

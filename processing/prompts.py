@@ -39,6 +39,7 @@ def format_prompt(title: str, body: str) -> str:
     safe_body = body if body else "[no body]"
 
     if len(safe_title) + len(safe_body) > 2000:
-        safe_body = safe_body[:500] + "..."
+        body_budget = max(200, 2000 - len(safe_title))
+        safe_body = safe_body[:body_budget] + "..."
 
     return CLASSIFICATION_PROMPT.format(title=safe_title, body=safe_body)

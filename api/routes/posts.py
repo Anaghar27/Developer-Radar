@@ -18,7 +18,7 @@ async def get_posts(
     topic: str | None = Query(None, description="Filter by topic"),
     tool: str | None = Query(None, description="Filter by tool_mentioned"),
     sentiment: str | None = Query(None, description="Filter by sentiment"),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0, description="Number of posts to skip for pagination"),
     current_user: dict = Depends(get_current_user),
 ):
