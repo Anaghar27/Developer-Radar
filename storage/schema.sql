@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS post_embeddings (
     embedding vector(1536)
 );
 
+-- DEPRECATED: daily_aggregates is superseded by mart_daily_sentiment in DuckDB.
+-- Kept for backward compatibility. Do not write new data to this table.
+-- Will be removed in a future migration once dbt marts are the single source of truth.
 CREATE TABLE IF NOT EXISTS daily_aggregates (
     id SERIAL PRIMARY KEY,
     date DATE,

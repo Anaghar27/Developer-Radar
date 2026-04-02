@@ -1,4 +1,8 @@
 """Daily aggregate computation for processed post classifications."""
+# NOTE: run_aggregation() writes to the legacy daily_aggregates PostgreSQL table.
+# For current aggregations, use detect_volume_spikes() which reads from
+# mart_trending_topics DuckDB mart (built by dbt on every DAG 2 run).
+# run_aggregation() is kept for backward compatibility only.
 
 import logging
 from collections import Counter, defaultdict

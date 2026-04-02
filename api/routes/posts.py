@@ -18,7 +18,8 @@ async def get_posts(
     topic: str | None = Query(None, description="Filter by topic"),
     tool: str | None = Query(None, description="Filter by tool_mentioned"),
     sentiment: str | None = Query(None, description="Filter by sentiment"),
-    limit: int = Query(50, ge=1, le=1000),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0, description="Number of posts to skip for pagination"),
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -27,7 +28,7 @@ async def get_posts(
     Redis cached for 5 minutes.
     Mirrors int_posts_enriched: raw_posts LEFT JOIN processed_posts.
     """
-    cache_key = make_cache_key("posts", source=source, topic=topic, tool=tool, sentiment=sentiment, limit=limit)
+    cache_key = make_cache_key("posts", source=source, topic=topic, tool=tool, sentiment=sentiment, limit=limit, offset=offset)
     redis = request.app.state.redis
 
     cached = await cache_get(redis, cache_key)
@@ -88,8 +89,9 @@ async def get_posts(
         total_row = await pool.fetchrow(count_query, *params)
         total = total_row[0] if total_row else 0
 
-        query += f" ORDER BY r.created_at DESC LIMIT ${idx}"
+        query += f" ORDER BY r.created_at DESC LIMIT ${idx} OFFSET ${idx + 1}"
         params.append(limit)
+        params.append(offset)
 
         rows = await pool.fetch(query, *params)
         posts = [PostResponse(**dict(row)) for row in rows]
@@ -99,6 +101,15 @@ async def get_posts(
         posts = []
         total = 0
 
-    result = PostsListResponse(posts=posts, total=total, limit=limit)
+    has_more = (offset + limit) < total
+    next_offset = (offset + limit) if has_more else None
+    result = PostsListResponse(
+        posts=posts,
+        total=total,
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+        next_offset=next_offset,
+    )
     await cache_set(redis, cache_key, result.model_dump())
     return result

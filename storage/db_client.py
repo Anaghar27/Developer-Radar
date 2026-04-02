@@ -180,7 +180,18 @@ def embedding_exists(post_id: str) -> bool:
 
 
 def upsert_daily_aggregate(record: dict) -> None:
-    """Insert or update an aggregate row keyed by date, topic, and tool."""
+    """
+    DEPRECATED: Use mart_daily_sentiment DuckDB mart instead.
+    This function writes to the legacy daily_aggregates PostgreSQL table.
+    Kept for backward compatibility only.
+    """
+    import warnings
+    warnings.warn(
+        "upsert_daily_aggregate() is deprecated. "
+        "Use mart_daily_sentiment from DuckDB instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     query = """
         INSERT INTO daily_aggregates (
             date,

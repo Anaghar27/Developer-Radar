@@ -43,6 +43,9 @@ class PostsListResponse(BaseModel):
     posts: list[PostResponse]
     total: int
     limit: int
+    offset: int = 0
+    has_more: bool = False
+    next_offset: int | None = None
 
 
 # ── Trends ────────────────────────────────────────────────────────────────────
