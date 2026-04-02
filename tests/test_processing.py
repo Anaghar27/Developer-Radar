@@ -143,9 +143,7 @@ def test_classify_post_llm_failure_routes_to_dead_letter():
 
 def test_embed_post_shape():
     """embed_post should return a 1536-dimensional embedding vector."""
-    mock_client = MagicMock()
-    mock_client.embeddings.create.return_value.data = [MagicMock(embedding=[0.1] * 1536)]
-    with patch("processing.embedder.get_openai_client", return_value=mock_client), \
+    with patch("processing.embedder._get_embedding", return_value=[0.1] * 1536), \
          patch("processing.embedder.insert_embedding"):
         result = embed_post(post_id="p1", title="hello", body="world")
     assert isinstance(result, list)
@@ -154,9 +152,7 @@ def test_embed_post_shape():
 
 def test_embed_post_returns_list():
     """embed_post should return a Python list."""
-    mock_client = MagicMock()
-    mock_client.embeddings.create.return_value.data = [MagicMock(embedding=[0.1] * 1536)]
-    with patch("processing.embedder.get_openai_client", return_value=mock_client), \
+    with patch("processing.embedder._get_embedding", return_value=[0.1] * 1536), \
          patch("processing.embedder.insert_embedding"):
         result = embed_post(post_id="p1", title="hello", body="world")
     assert isinstance(result, list)

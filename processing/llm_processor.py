@@ -9,7 +9,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timezone
 from threading import Lock
 
-from llm_client import active_provider, call_llm
+from llm_client import active_provider
+from processing.llm_client import call_llm
 from processing.prompts import format_prompt
 from storage import db_client
 from storage.db_client import insert_failed_event

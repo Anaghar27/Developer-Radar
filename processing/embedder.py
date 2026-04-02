@@ -1,43 +1,19 @@
 """Embedding generation for developer sentiment posts."""
 
 import logging
-import os
 
-from openai import OpenAI
-
+from processing.llm_client import get_embedding as _get_embedding
 from storage import db_client
 from storage.db_client import insert_embedding
 
 logger = logging.getLogger(__name__)
 
-_openai_client = None
-
-
-def get_openai_client() -> OpenAI:
-    global _openai_client
-    if _openai_client is None:
-        _openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    return _openai_client
-
 
 def get_embedding(text: str) -> list[float]:
     """
-    Get embedding for a single text using OpenAI text-embedding-3-small.
-    Returns a 1536-dimensional vector.
+    Get 1536-dim embedding via unified LLM client (OpenAI text-embedding-3-small).
     """
-    client = get_openai_client()
-    text = text[:8000] if text else ""
-    if not text.strip():
-        return [0.0] * 1536
-    try:
-        response = client.embeddings.create(
-            input=text,
-            model="text-embedding-3-small",
-        )
-        return response.data[0].embedding
-    except Exception as e:
-        logging.error(f"OpenAI embedding failed: {e}")
-        return [0.0] * 1536
+    return _get_embedding(text)
 
 
 def embed_post(post_id: str, title: str, body: str) -> list[float]:

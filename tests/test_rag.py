@@ -36,9 +36,6 @@ def test_semantic_search_returns_posts():
     """semantic_search returns a list of post dicts."""
     from rag.hybrid_retriever import semantic_search
 
-    mock_client = MagicMock()
-    mock_client.embeddings.create.return_value.data = [MagicMock(embedding=[0.1] * 1536)]
-
     mock_cursor = MagicMock()
     mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
     mock_cursor.__exit__ = MagicMock(return_value=False)
@@ -47,7 +44,7 @@ def test_semantic_search_returns_posts():
     mock_conn = MagicMock()
     mock_conn.cursor.return_value = mock_cursor
 
-    with patch("rag.hybrid_retriever.get_openai_client", return_value=mock_client), \
+    with patch("rag.hybrid_retriever._get_embedding", return_value=[0.1] * 1536), \
          patch("rag.hybrid_retriever.get_pg_connection", return_value=mock_conn):
         results = semantic_search("pytorch production", limit=10)
 

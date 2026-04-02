@@ -1,12 +1,11 @@
 import hashlib
 import json
 import logging
-import os
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 
 from dotenv import load_dotenv
-from openai import OpenAI
 
+from processing.llm_client import call_llm
 from rag.hybrid_retriever import retrieve
 from rag.llm_tracker import LLMTracker
 from rag.reranker import rerank
@@ -19,20 +18,6 @@ MIN_POST_SCORE = 0.3        # drop posts below this score before insight generat
 INITIAL_LIMIT = 20          # posts to retrieve on first attempt
 WIDE_LIMIT = 40             # posts to retrieve on retry
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL = "gpt-4o-mini"
-
-# Lazy OpenAI client
-_openai_client = None
-
-
-def get_openai_client() -> OpenAI:
-    global _openai_client
-    if _openai_client is None:
-        _openai_client = OpenAI(api_key=OPENAI_API_KEY)
-    return _openai_client
-
-
 # ── Relevance grader (1 OpenAI call per post) ────────────────────────────────
 
 def grade_relevance(query: str, posts: list[dict]) -> tuple[float, list[dict]]:
@@ -43,7 +28,6 @@ def grade_relevance(query: str, posts: list[dict]) -> tuple[float, list[dict]]:
     if not posts:
         return 0.0, []
 
-    client = get_openai_client()
     graded = []
     scores = []
 
@@ -57,13 +41,12 @@ Respond with ONLY a JSON object: {{"score": 0.0}}
 Score 1.0 = highly relevant, 0.0 = completely irrelevant."""
 
         try:
-            response = client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[{"role": "user", "content": prompt}],
+            content = call_llm(
+                prompt,
+                provider="openai",
+                model="gpt-4o-mini",
                 max_tokens=20,
-                timeout=15,
             )
-            content = response.choices[0].message.content
             clean = content.strip().replace("```json", "").replace("```", "")
             score = float(json.loads(clean)["score"])
             score = max(0.0, min(1.0, score))
@@ -90,8 +73,6 @@ def generate_insight(query: str, posts: list[dict]) -> str:
     if not posts:
         return "No relevant posts found to generate an insight report."
 
-    client = get_openai_client()
-
     context_parts = []
     for i, post in enumerate(posts, 1):
         context_parts.append(
@@ -117,13 +98,12 @@ Posts:
 Write a 3-5 paragraph insight report:"""
 
     try:
-        response = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
+        return call_llm(
+            prompt,
+            provider="openai",
+            model="gpt-4o-mini",
             max_tokens=800,
-            timeout=60,
         )
-        return response.choices[0].message.content
     except Exception as e:
         logger.error(f"Insight generation failed: {e}")
         return f"Insight generation failed: {str(e)}"

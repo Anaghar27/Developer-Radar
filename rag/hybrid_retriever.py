@@ -1,23 +1,14 @@
 import logging
 import os
-from typing import Optional
 
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
-from openai import OpenAI
+
+from processing.llm_client import get_embedding as _get_embedding
 
 load_dotenv()
 logger = logging.getLogger(__name__)
-
-_openai_client = None
-
-
-def get_openai_client() -> OpenAI:
-    global _openai_client
-    if _openai_client is None:
-        _openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    return _openai_client
 
 
 def get_pg_connection():
@@ -36,12 +27,7 @@ def semantic_search(query: str, limit: int = 20) -> list[dict]:
     Returns list of dicts with post_id, title, body, source,
     sentiment, topic, tool_mentioned, score, rank.
     """
-    client = get_openai_client()
-    response = client.embeddings.create(
-        input=query[:8000],
-        model="text-embedding-3-small",
-    )
-    query_embedding = response.data[0].embedding
+    query_embedding = _get_embedding(query)
 
     conn = get_pg_connection()
     try:
