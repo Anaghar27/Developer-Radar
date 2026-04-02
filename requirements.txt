@@ -5,8 +5,6 @@ psycopg2-binary
 pgvector
 apache-airflow==2.10.4
 streamlit
-langgraph
-sentence-transformers
 plotly
 python-dotenv
 kafka-python==2.0.2
@@ -22,3 +20,5 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 slowapi==0.1.9
 openai>=1.30.0
+# Optional: install for cross-encoder reranking in rag/reranker.py
+# sentence-transformers

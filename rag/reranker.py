@@ -8,15 +8,21 @@ _cross_encoder = None
 
 
 def get_cross_encoder():
-    """Lazy load cross-encoder model."""
+    """Lazy load cross-encoder — falls back gracefully if not available."""
     global _cross_encoder
     if _cross_encoder is None:
         try:
             from sentence_transformers import CrossEncoder
             _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-            logger.info("Cross-encoder model loaded")
+            logger.info("Cross-encoder loaded")
+        except ImportError:
+            logger.warning(
+                "sentence-transformers not installed — reranking disabled. "
+                "Install with: pip install sentence-transformers"
+            )
+            _cross_encoder = None
         except Exception as e:
-            logger.warning(f"Could not load cross-encoder: {e}. Reranking disabled.")
+            logger.warning(f"Cross-encoder load failed: {e}. Reranking disabled.")
             _cross_encoder = None
     return _cross_encoder
 
