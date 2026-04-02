@@ -138,7 +138,8 @@ def test_run_corrective_rag_returns_report():
     """run_corrective_rag returns a dict with report and sources_used."""
     from rag.corrective_rag import run_corrective_rag
 
-    with patch("rag.corrective_rag.retrieve", return_value=list(SAMPLE_POSTS)), \
+    with patch("rag.corrective_rag.expand_query", return_value=["What do developers think about PyTorch?"]), \
+         patch("rag.corrective_rag.retrieve", return_value=list(SAMPLE_POSTS)), \
          patch("rag.corrective_rag.grade_relevance", return_value=(0.8, list(SAMPLE_POSTS))), \
          patch("rag.corrective_rag.rerank", return_value=list(SAMPLE_POSTS)), \
          patch("rag.corrective_rag.generate_insight", return_value="Mock insight report"):
@@ -149,3 +150,143 @@ def test_run_corrective_rag_returns_report():
     assert "sources_used" in result
     assert "generated_at" in result
     assert result["report"] == "Mock insight report"
+
+
+# ── batch relevance grading ───────────────────────────────────────────────────
+
+def test_batch_relevance_grading_single_llm_call():
+    """grade_relevance() makes exactly 1 LLM call for 10 posts."""
+    from rag.corrective_rag import grade_relevance
+
+    posts = [
+        {"post_id": f"post_{i}", "title": f"Title {i}", "body": f"Body {i}"}
+        for i in range(10)
+    ]
+
+    with patch("rag.corrective_rag.call_llm",
+               return_value="[0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]") as mock_llm:
+        avg, graded = grade_relevance("test query", posts)
+
+    assert mock_llm.call_count == 1, f"Expected 1 batch call, got {mock_llm.call_count}"
+    assert len(graded) == 10
+    assert abs(avg - 0.45) < 0.01
+    assert all("relevance_score" in p for p in graded)
+
+
+def test_batch_relevance_grading_fallback_on_error():
+    """grade_relevance() falls back to 0.5 scores if LLM call fails."""
+    from rag.corrective_rag import grade_relevance
+
+    posts = [
+        {"post_id": "a", "title": "Test", "body": "Body"},
+        {"post_id": "b", "title": "Test 2", "body": "Body 2"},
+    ]
+
+    with patch("rag.corrective_rag.call_llm", side_effect=Exception("API down")):
+        avg, graded = grade_relevance("test query", posts)
+
+    assert len(graded) == 2
+    assert all(p["relevance_score"] == 0.5 for p in graded)
+    assert avg == 0.5
+
+
+def test_batch_relevance_grading_malformed_response():
+    """grade_relevance() handles malformed JSON response gracefully."""
+    from rag.corrective_rag import grade_relevance
+
+    posts = [{"post_id": "a", "title": "Test", "body": "Body"}]
+
+    with patch("rag.corrective_rag.call_llm", return_value="not valid json at all"):
+        _, graded = grade_relevance("test query", posts)
+
+    assert graded[0]["relevance_score"] == 0.5
+
+
+# ── query expansion ───────────────────────────────────────────────────────────
+
+def test_expand_query_returns_4_variants():
+    """expand_query() returns original + 3 variants = 4 total."""
+    from rag.corrective_rag import expand_query
+
+    with patch("rag.corrective_rag.call_llm",
+               return_value='["pytorch optimization", "torch training speed", "deep learning perf"]'):
+        variants = expand_query("pytorch performance")
+
+    assert len(variants) == 4
+    assert variants[0] == "pytorch performance"
+    assert "pytorch optimization" in variants
+
+
+def test_expand_query_fallback_on_error():
+    """expand_query() returns [original_query] on failure."""
+    from rag.corrective_rag import expand_query
+
+    with patch("rag.corrective_rag.call_llm", side_effect=Exception("API down")):
+        variants = expand_query("pytorch performance")
+
+    assert variants == ["pytorch performance"]
+    assert len(variants) == 1
+
+
+def test_expand_query_original_always_first():
+    """Original query is always the first element."""
+    from rag.corrective_rag import expand_query
+
+    original = "what is the best ML framework"
+    with patch("rag.corrective_rag.call_llm",
+               return_value='["top ML libraries", "best deep learning tools", "AI framework comparison"]'):
+        variants = expand_query(original)
+
+    assert variants[0] == original
+
+
+# ── retrieve with expansion ───────────────────────────────────────────────────
+
+def test_retrieve_with_expanded_queries():
+    """retrieve() deduplicates posts appearing across multiple query variants."""
+    from rag.hybrid_retriever import retrieve
+
+    mock_post = {
+        "post_id": "abc",
+        "title": "PyTorch rocks",
+        "body": "Great",
+        "source": "reddit",
+        "url": "http://example.com",
+        "sentiment": "positive",
+        "topic": "machine_learning",
+        "tool_mentioned": "pytorch",
+        "controversy_score": 0.1,
+        "similarity_score": 0.9,
+    }
+
+    with patch("rag.hybrid_retriever.semantic_search", return_value=[mock_post]), \
+         patch("rag.hybrid_retriever.keyword_search", return_value=[mock_post]):
+        results = retrieve(
+            "pytorch",
+            limit=10,
+            expanded_queries=["pytorch", "torch", "pytorch framework"],
+        )
+
+    post_ids = [r["post_id"] for r in results]
+    assert len(set(post_ids)) == len(post_ids), "Duplicate post_ids found after dedup"
+
+
+def test_corrective_rag_uses_query_expansion():
+    """run_corrective_rag() calls expand_query and passes variants to retrieve."""
+    from rag.corrective_rag import run_corrective_rag
+
+    with patch("rag.corrective_rag.expand_query",
+               return_value=["original", "variant1", "variant2", "variant3"]) as mock_expand, \
+         patch("rag.corrective_rag.retrieve", return_value=list(SAMPLE_POSTS)) as mock_retrieve, \
+         patch("rag.corrective_rag.grade_relevance", return_value=(0.8, list(SAMPLE_POSTS))), \
+         patch("rag.corrective_rag.rerank", return_value=list(SAMPLE_POSTS)), \
+         patch("rag.corrective_rag.generate_insight", return_value="Mock report"):
+
+        result = run_corrective_rag("original query")
+
+    mock_expand.assert_called_once_with("original query")
+    call_kwargs = mock_retrieve.call_args.kwargs
+    assert "expanded_queries" in call_kwargs
+    assert len(call_kwargs["expanded_queries"]) == 4
+    assert "query_variants" in result
+    assert result["query_variants"] == 4
