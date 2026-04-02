@@ -3,7 +3,6 @@
 import hashlib
 from unittest.mock import MagicMock, patch
 
-
 # ── Email utility ─────────────────────────────────────────────────────────────
 
 def test_send_reset_email_no_smtp_returns_false():
@@ -78,7 +77,9 @@ def test_forgot_password_hashes_otp_before_storing():
        patch("api.auth.router.send_reset_email", return_value=False):
 
         from unittest.mock import AsyncMock
+
         from fastapi.testclient import TestClient
+
         from api.main import app
 
         mock_pool = AsyncMock()
@@ -98,7 +99,7 @@ def test_forgot_password_hashes_otp_before_storing():
             with TestClient(app) as c:
                 c.post("/auth/forgot-password", json={"email": "u@x.com"})
 
-    expected_hash = hashlib.sha256("444444".encode()).hexdigest()
+    expected_hash = hashlib.sha256(b"444444").hexdigest()
     assert captured.get("token_hash") == expected_hash
     assert captured.get("user_id") == 7
 
