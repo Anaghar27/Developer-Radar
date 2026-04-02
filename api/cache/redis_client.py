@@ -40,6 +40,8 @@ async def cache_get(redis, key: str) -> Any | None:
     Get a value from Redis cache.
     Returns deserialized Python object or None if not found.
     """
+    if redis is None:
+        return None
     try:
         value = await redis.get(key)
         if value is None:
@@ -55,6 +57,8 @@ async def cache_set(redis, key: str, value: Any, ttl: int = DEFAULT_TTL) -> None
     Set a value in Redis cache with TTL.
     Serializes Python object to JSON.
     """
+    if redis is None:
+        return
     try:
         await redis.setex(key, ttl, json.dumps(value, default=str))
     except Exception as e:
@@ -67,6 +71,8 @@ async def cache_invalidate_pattern(redis, pattern: str) -> int:
     Returns number of keys deleted.
     Used by Airflow after dbt runs.
     """
+    if redis is None:
+        return 0
     try:
         keys = await redis.keys(pattern)
         if not keys:

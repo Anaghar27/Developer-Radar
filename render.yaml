@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: devpulse-api
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: pip install uv && uv pip install -r requirements.txt --system
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /ping
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: POSTGRES_HOST
+        sync: false
+      - key: POSTGRES_PORT
+        value: 5432
+      - key: POSTGRES_DB
+        sync: false
+      - key: POSTGRES_USER
+        sync: false
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: nvidia/llama-3.1-nemotron-ultra-253b-v1:free
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USER_AGENT
+        value: devpulse/1.0
+      - key: REDIS_URL
+        sync: false
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: localhost:9092
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 1440
+      - key: INTERNAL_API_KEY
+        sync: false
+      - key: DBT_DUCKDB_PATH
+        value: transform/devpulse.duckdb
+      - key: API_BASE_URL
+        sync: false

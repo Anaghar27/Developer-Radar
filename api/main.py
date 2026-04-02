@@ -24,6 +24,12 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+
+def duckdb_available() -> bool:
+    """Return True if the DuckDB mart file exists and is readable."""
+    path = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
+    return os.path.isfile(path)
+
 limiter = Limiter(key_func=get_remote_address)
 
 # ── Lifespan ─────────────────────────────────────────────────────────────────
@@ -35,26 +41,35 @@ async def lifespan(app: FastAPI):
     logger.info("Starting DevPulse API...")
 
     # asyncpg connection pool
-    app.state.db_pool = await asyncpg.create_pool(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=int(os.getenv("POSTGRES_PORT", "5432")),
-        database=os.getenv("POSTGRES_DB", "developer_intelligence"),
-        user=os.getenv("POSTGRES_USER", "postgres"),
-        password=os.getenv("POSTGRES_PASSWORD", "postgres"),
-        min_size=2,
-        max_size=10,
-    )
-    logger.info("Database pool created")
+    try:
+        app.state.db_pool = await asyncpg.create_pool(
+            host=os.getenv("POSTGRES_HOST", "localhost"),
+            port=int(os.getenv("POSTGRES_PORT", "5432")),
+            database=os.getenv("POSTGRES_DB", "developer_intelligence"),
+            user=os.getenv("POSTGRES_USER", "postgres"),
+            password=os.getenv("POSTGRES_PASSWORD", "postgres"),
+            min_size=2,
+            max_size=10,
+        )
+        logger.info("Database pool created")
+    except Exception as exc:
+        logger.warning(f"Database unavailable at startup (degraded mode): {exc}")
+        app.state.db_pool = None
 
     # Redis connection
     from api.cache.redis_client import close_redis, init_redis
-    await init_redis(app)
-    logger.info("Redis connected")
+    try:
+        await init_redis(app)
+        logger.info("Redis connected")
+    except Exception as exc:
+        logger.warning(f"Redis unavailable at startup (cache disabled): {exc}")
+        app.state.redis = None
 
     yield
 
     # Shutdown
-    await app.state.db_pool.close()
+    if app.state.db_pool is not None:
+        await app.state.db_pool.close()
     await close_redis(app)
     logger.info("DevPulse API shutdown complete")
 
@@ -95,4 +110,13 @@ app.include_router(query_router)
 @limiter.limit("60/minute")
 async def ping(request: Request):
     """Basic liveness check — no auth required."""
-    return {"status": "ok", "service": "devpulse-api"}
+    db_ok = getattr(request.app.state, "db_pool", None) is not None
+    redis_ok = getattr(request.app.state, "redis", None) is not None
+    return {
+        "status": "ok",
+        "service": "devpulse-api",
+        "version": app.version,
+        "db_connected": db_ok,
+        "redis_connected": redis_ok,
+        "duckdb_available": duckdb_available(),
+    }

@@ -36,6 +36,8 @@ async def get_posts(
 
     try:
         pool = request.app.state.db_pool
+        if pool is None:
+            raise RuntimeError("Database unavailable")
 
         # Mirror int_posts_enriched: raw_posts LEFT JOIN processed_posts
         # raw_posts uses: id, source, title, url, score, created_at, ingest_batch_id
