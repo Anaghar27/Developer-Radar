@@ -1,15 +1,15 @@
-from typing import Optional
-
+"""Lumina filter components — clean, minimal UI."""
 import streamlit as st
 
 
 def source_filter(key: str = "source") -> str | None:
-    return st.selectbox(
+    val = st.selectbox(
         "Source",
         options=["All", "reddit", "hackernews"],
         key=key,
         index=0,
-    ) or None
+    )
+    return None if val == "All" else val
 
 
 def topic_filter(key: str = "topic") -> str | None:
@@ -31,12 +31,14 @@ def sentiment_filter(key: str = "sentiment") -> str | None:
     return None if val == "All" else val
 
 
-def days_filter(key: str = "days", default: int = 30) -> int:
+def days_filter(key: str = "days", default: int = 28) -> int:
+    valid_default = min(max(default, 7), 84)
+    valid_default -= (valid_default - 7) % 7
     return st.slider(
         "Days to look back",
         min_value=7,
-        max_value=90,
-        value=default,
+        max_value=84,
+        value=valid_default,
         step=7,
         key=key,
     )

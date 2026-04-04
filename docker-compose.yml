@@ -93,6 +93,8 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-devpulse-airflow-local-secret}
+      AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
+      AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
       POSTGRES_HOST: postgres
       PYTHONPATH: /opt/airflow/project
       DBT_PROJECT_DIR: /opt/airflow/project/transform
@@ -102,6 +104,7 @@ services:
     volumes:
       - ./pipeline:/opt/airflow/dags
       - ./:/opt/airflow/project
+      - airflow_logs:/opt/airflow/logs
     links:
       - postgres:postgres
     entrypoint:
@@ -127,6 +130,8 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-devpulse-airflow-local-secret}
+      AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
+      AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
       POSTGRES_HOST: postgres
       PYTHONPATH: /opt/airflow/project
       DBT_PROJECT_DIR: /opt/airflow/project/transform
@@ -134,6 +139,7 @@ services:
     volumes:
       - ./pipeline:/opt/airflow/dags
       - ./:/opt/airflow/project
+      - airflow_logs:/opt/airflow/logs
     links:
       - postgres:postgres
     entrypoint:
@@ -199,6 +205,7 @@ services:
 volumes:
   postgres_data:
   zookeeper_data:
+  airflow_logs:
 
 networks:
   devpulse_net:

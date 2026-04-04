@@ -43,7 +43,7 @@ async def query_insights(
     Note: First call for a query takes 15-60s. Subsequent calls return instantly from cache.
     """
     redis = request.app.state.redis
-    cache_key = f"devpulse:rag:{make_query_hash(body.query)}"
+    cache_key = f"devpulse:rag:v2:{make_query_hash(body.query)}"
 
     # ── Step 1: Cache hit ──────────────────────────────────────────────────────
     cached = await cache_get(redis, cache_key)

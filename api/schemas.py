@@ -1,17 +1,31 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
+
+_SPECIAL_CHARS = set("!@#$%^&*()_+-=[]{}|;':\",./<>?")
 
 class UserRegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
 
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter.")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one number.")
+        if not any(c in _SPECIAL_CHARS for c in v):
+            raise ValueError("Password must contain at least one special character.")
+        return v
+
 class UserRegisterResponse(BaseModel):
     user_id: int
     email: str
     api_key: str
+    verify_token: str | None = None  # OTP returned in dev mode when SMTP is not configured
 
 class TokenRequest(BaseModel):
     email: EmailStr
@@ -163,6 +177,12 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=8)
 
 class ResetPasswordResponse(BaseModel):
+    message: str
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+class VerifyEmailResponse(BaseModel):
     message: str
 
 

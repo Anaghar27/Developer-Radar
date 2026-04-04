@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from api.auth.email import send_reset_email
+from api.auth.email import send_reset_email, send_verification_email
 from api.auth.jwt import create_access_token, generate_api_key, hash_password, verify_password
 from api.schemas import (
     ForgotPasswordRequest,
@@ -15,12 +15,18 @@ from api.schemas import (
     TokenResponse,
     UserRegisterRequest,
     UserRegisterResponse,
+    VerifyEmailRequest,
+    VerifyEmailResponse,
 )
 from storage.db_client import (
+    activate_user,
     consume_reset_token,
+    consume_verification_token,
     create_reset_token,
+    create_verification_token,
     fetch_reset_token,
     fetch_user_by_email,
+    fetch_verification_token,
     insert_user,
     update_user_password,
 )
@@ -30,22 +36,47 @@ router = APIRouter()
 
 @router.post("/register", response_model=UserRegisterResponse, status_code=201)
 async def register(body: UserRegisterRequest, request: Request):
-    """Register a new user. Returns user_id and api_key."""
-    # Check if email already exists
     existing = fetch_user_by_email(body.email)
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
-        )
+        if existing["is_active"]:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        # Unverified account: resend a fresh OTP so the user is not stuck
+        user_id = existing["id"]
+        otp = "".join(str(secrets.randbelow(10)) for _ in range(6))
+        token_hash = hashlib.sha256(otp.encode()).hexdigest()
+        expires_at = datetime.now(UTC) + timedelta(minutes=5)
+        create_verification_token(user_id, token_hash, expires_at)
+        sent = send_verification_email(body.email, otp)
+        if not sent:
+            return UserRegisterResponse(user_id=user_id, email=body.email, api_key=existing["api_key"], verify_token=otp)
+        return UserRegisterResponse(user_id=user_id, email=body.email, api_key=existing["api_key"])
+
     hashed = hash_password(body.password)
     api_key = generate_api_key()
-    user_id = insert_user(
-        email=body.email,
-        hashed_password=hashed,
-        api_key=api_key,
-    )
+    user_id = insert_user(email=body.email, hashed_password=hashed, api_key=api_key)
+
+    otp = "".join(str(secrets.randbelow(10)) for _ in range(6))
+    token_hash = hashlib.sha256(otp.encode()).hexdigest()
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    create_verification_token(user_id, token_hash, expires_at)
+
+    sent = send_verification_email(body.email, otp)
+    if not sent:
+        return UserRegisterResponse(user_id=user_id, email=body.email, api_key=api_key, verify_token=otp)
+
     return UserRegisterResponse(user_id=user_id, email=body.email, api_key=api_key)
+
+
+@router.post("/verify-email", response_model=VerifyEmailResponse)
+async def verify_email(body: VerifyEmailRequest):
+    """Verify a user's email address using a one-time OTP."""
+    token_hash = hashlib.sha256(body.token.encode()).hexdigest()
+    record = fetch_verification_token(token_hash)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification code.")
+    activate_user(record["user_id"])
+    consume_verification_token(record["id"])
+    return VerifyEmailResponse(message="Email verified. You can now log in.")
 
 
 @router.post("/token", response_model=TokenResponse)
@@ -60,7 +91,7 @@ async def login(body: TokenRequest, request: Request):
     if not user["is_active"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is inactive",
+            detail="Email not verified. Please check your inbox for the verification OTP.",
         )
     token = create_access_token({"sub": user["email"], "user_id": user["id"]})
     return TokenResponse(access_token=token)

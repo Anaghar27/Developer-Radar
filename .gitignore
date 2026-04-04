@@ -38,5 +38,7 @@ airflow_logs/
 *.swp
 
 # Artifacts
-
 /artifacts
+
+# Claude
+.claude/

@@ -9,6 +9,18 @@ from processing.llm_client import get_embedding as _get_embedding
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+_DEMO_URL_PATTERNS = [
+    "%/demo1",
+    "%/demo2",
+    "%/demo3",
+    "%/demo4",
+    "%/demo5",
+    "%/demo6",
+    "%/demo7",
+    "%/demo8",
+    "%/demo9",
+    "%/demo10",
+]
 
 
 def get_pg_connection():
@@ -47,9 +59,14 @@ def semantic_search(query: str, limit: int = 20) -> list[dict]:
                 FROM post_embeddings e
                 JOIN raw_posts r ON e.post_id = r.id
                 LEFT JOIN processed_posts p ON r.id = p.post_id
+                WHERE NOT (
+                    r.url ILIKE ANY(%s)
+                    OR r.id LIKE 'demo_%%'
+                    OR r.ingest_batch_id = 'demo_seed_batch'
+                )
                 ORDER BY e.embedding <=> %s::vector
                 LIMIT %s
-            """, (query_embedding, query_embedding, limit))
+            """, (query_embedding, _DEMO_URL_PATTERNS, query_embedding, limit))
             rows = cur.fetchall()
             return [dict(row) for row in rows]
     finally:
@@ -85,9 +102,14 @@ def keyword_search(query: str, limit: int = 20) -> list[dict]:
                 LEFT JOIN processed_posts p ON r.id = p.post_id
                 WHERE to_tsvector('english', r.title || ' ' || coalesce(r.body, ''))
                     @@ plainto_tsquery('english', %s)
+                    AND NOT (
+                        r.url ILIKE ANY(%s)
+                        OR r.id LIKE 'demo_%%'
+                        OR r.ingest_batch_id = 'demo_seed_batch'
+                    )
                 ORDER BY similarity_score DESC
                 LIMIT %s
-            """, (query, query, limit))
+            """, (query, query, _DEMO_URL_PATTERNS, limit))
             rows = cur.fetchall()
             return [dict(row) for row in rows]
     finally:

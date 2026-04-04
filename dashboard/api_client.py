@@ -29,6 +29,7 @@ def api_get(endpoint: str, params: dict = None) -> dict | None:
         )
         if response.status_code == 401:
             st.session_state.pop("token", None)
+            st.query_params.clear()
             st.error("Session expired. Please log in again.")
             st.rerun()
         response.raise_for_status()
@@ -115,8 +116,8 @@ def reset_password(token: str, new_password: str) -> bool:
         return False
 
 
-def register(email: str, password: str) -> bool:
-    """Register a new user."""
+def register(email: str, password: str) -> dict | None:
+    """Register a new user. Returns response dict (may include verify_token in dev mode) or None on error."""
     try:
         response = requests.post(
             f"{API_BASE_URL}/auth/register",
@@ -124,9 +125,32 @@ def register(email: str, password: str) -> bool:
             timeout=10,
         )
         if response.status_code == 201:
-            return True
-        st.error(response.json().get("detail", "Registration failed."))
-        return False
+            return response.json()
+        try:
+            detail = response.json().get("detail", "Registration failed.")
+        except Exception:
+            detail = f"Registration failed (HTTP {response.status_code})."
+        if isinstance(detail, list):
+            detail = "; ".join(e.get("msg", str(e)) for e in detail)
+        st.error(detail)
+        return None
     except Exception as e:
         st.error(f"Registration failed: {e}")
+        return None
+
+
+def verify_email(token: str) -> bool:
+    """Submit an email verification OTP. Returns True on success."""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/auth/verify-email",
+            json={"token": token},
+            timeout=10,
+        )
+        if response.status_code == 200:
+            return True
+        st.error(response.json().get("detail", "Verification failed."))
+        return False
+    except Exception as e:
+        st.error(f"Verification failed: {e}")
         return False

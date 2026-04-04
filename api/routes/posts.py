@@ -28,7 +28,7 @@ async def get_posts(
     Redis cached for 5 minutes.
     Mirrors int_posts_enriched: raw_posts LEFT JOIN processed_posts.
     """
-    cache_key = make_cache_key("posts", source=source, topic=topic, tool=tool, sentiment=sentiment, limit=limit, offset=offset)
+    cache_key = make_cache_key("posts_v2", source=source, topic=topic, tool=tool, sentiment=sentiment, limit=limit, offset=offset)
     redis = request.app.state.redis
 
     cached = await cache_get(redis, cache_key)
@@ -51,11 +51,27 @@ async def get_posts(
                 r.title,
                 r.url,
                 COALESCE(r.score, 0)    AS score,
-                p.sentiment,
-                p.emotion,
-                p.topic,
-                p.tool_mentioned,
-                p.controversy_score,
+                CASE
+                    WHEN p.sentiment IN ('positive', 'negative', 'neutral')
+                        THEN p.sentiment
+                    ELSE 'neutral'
+                END                     AS sentiment,
+                CASE
+                    WHEN p.emotion IN ('excited', 'frustrated', 'skeptical', 'curious', 'hopeful', 'neutral')
+                        THEN p.emotion
+                    ELSE 'neutral'
+                END                     AS emotion,
+                CASE
+                    WHEN p.topic IN ('LLM', 'Agents', 'RAG', 'MLOps', 'Python', 'WebDev', 'DevTools', 'Cloud', 'Hardware', 'Security', 'Career', 'OpenSource', 'Other')
+                        THEN p.topic
+                    ELSE 'Other'
+                END                     AS topic,
+                NULLIF(trim(p.tool_mentioned), '') AS tool_mentioned,
+                CASE
+                    WHEN p.controversy_score < 0 THEN 0.0
+                    WHEN p.controversy_score > 1 THEN 1.0
+                    ELSE COALESCE(p.controversy_score, 0.0)
+                END                     AS controversy_score,
                 r.created_at::date      AS post_date,
                 r.created_at            AS created_at_utc
             FROM raw_posts r
@@ -83,7 +99,7 @@ async def get_posts(
             idx += 1
 
         count_query = query.replace(
-            "SELECT\n                r.id::text              AS post_id,\n                r.source,\n                NULL::text              AS subreddit,\n                r.title,\n                r.url,\n                COALESCE(r.score, 0)    AS score,\n                p.sentiment,\n                p.emotion,\n                p.topic,\n                p.tool_mentioned,\n                p.controversy_score,\n                r.created_at::date      AS post_date,\n                r.created_at            AS created_at_utc",
+            "SELECT\n                r.id::text              AS post_id,\n                r.source,\n                NULL::text              AS subreddit,\n                r.title,\n                r.url,\n                COALESCE(r.score, 0)    AS score,\n                CASE\n                    WHEN p.sentiment IN ('positive', 'negative', 'neutral')\n                        THEN p.sentiment\n                    ELSE 'neutral'\n                END                     AS sentiment,\n                CASE\n                    WHEN p.emotion IN ('excited', 'frustrated', 'skeptical', 'curious', 'hopeful', 'neutral')\n                        THEN p.emotion\n                    ELSE 'neutral'\n                END                     AS emotion,\n                CASE\n                    WHEN p.topic IN ('LLM', 'Agents', 'RAG', 'MLOps', 'Python', 'WebDev', 'DevTools', 'Cloud', 'Hardware', 'Security', 'Career', 'OpenSource', 'Other')\n                        THEN p.topic\n                    ELSE 'Other'\n                END                     AS topic,\n                NULLIF(trim(p.tool_mentioned), '') AS tool_mentioned,\n                CASE\n                    WHEN p.controversy_score < 0 THEN 0.0\n                    WHEN p.controversy_score > 1 THEN 1.0\n                    ELSE COALESCE(p.controversy_score, 0.0)\n                END                     AS controversy_score,\n                r.created_at::date      AS post_date,\n                r.created_at            AS created_at_utc",
             "SELECT COUNT(*)"
         )
         total_row = await pool.fetchrow(count_query, *params)

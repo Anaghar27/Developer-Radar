@@ -79,10 +79,12 @@ def test_health(client):
 
 def test_register_user(client):
     with patch("api.auth.router.fetch_user_by_email", return_value=None), \
-         patch("api.auth.router.insert_user", return_value=1):
+         patch("api.auth.router.insert_user", return_value=1), \
+         patch("api.auth.router.create_verification_token"), \
+         patch("api.auth.router.send_verification_email", return_value=False):
         response = client.post("/auth/register", json={
             "email": "newuser@devpulse.com",
-            "password": "securepass123",
+            "password": "Securepass123!",
         })
     assert response.status_code == 201
     assert "api_key" in response.json()

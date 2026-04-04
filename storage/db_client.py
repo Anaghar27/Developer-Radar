@@ -636,8 +636,8 @@ def fetch_latest_pipeline_run(dag_id: str = None) -> dict | None:
 def insert_user(email: str, hashed_password: str, api_key: str) -> int:
     """Insert a new user. Returns the new user id."""
     query = """
-        INSERT INTO users (email, hashed_password, api_key)
-        VALUES (%s, %s, %s)
+        INSERT INTO users (email, hashed_password, api_key, is_active)
+        VALUES (%s, %s, %s, FALSE)
         RETURNING id
     """
     try:
@@ -714,6 +714,18 @@ def deactivate_user(user_id: int) -> None:
                 cur.execute(query, (user_id,))
     except psycopg2.Error:
         logger.exception("Failed to deactivate user: %s", user_id)
+        raise
+
+
+def activate_user(user_id: int) -> None:
+    """Set is_active=True for the given user_id."""
+    query = "UPDATE users SET is_active = TRUE WHERE id = %s"
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (user_id,))
+    except psycopg2.Error:
+        logger.exception("Failed to activate user: %s", user_id)
         raise
 
 
@@ -857,4 +869,56 @@ def update_user_password(user_id: int, hashed_password: str) -> None:
                 cur.execute(query, (hashed_password, user_id))
     except psycopg2.Error:
         logger.exception("Failed to update password for user: %s", user_id)
+        raise
+
+
+# ── Email verification tokens ────────────────────────────────────────────────
+
+
+def create_verification_token(user_id: int, token_hash: str, expires_at) -> None:
+    """Store a hashed email verification token. Replaces any existing unused token for the user."""
+    delete_query = "DELETE FROM email_verification_tokens WHERE user_id = %s AND used_at IS NULL"
+    insert_query = """
+        INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+        VALUES (%s, %s, %s)
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(delete_query, (user_id,))
+                cur.execute(insert_query, (user_id, token_hash, expires_at))
+    except psycopg2.Error:
+        logger.exception("Failed to create verification token for user: %s", user_id)
+        raise
+
+
+def fetch_verification_token(token_hash: str) -> dict | None:
+    """Fetch a valid (unused, non-expired) verification token record. Returns dict or None."""
+    query = """
+        SELECT id, user_id, token_hash, expires_at, used_at
+        FROM email_verification_tokens
+        WHERE token_hash = %s
+          AND used_at IS NULL
+          AND expires_at > NOW()
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+                cur.execute(query, (token_hash,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+    except psycopg2.Error:
+        logger.exception("Failed to fetch verification token")
+        raise
+
+
+def consume_verification_token(token_id: int) -> None:
+    """Mark a verification token as used so it cannot be reused."""
+    query = "UPDATE email_verification_tokens SET used_at = NOW() WHERE id = %s"
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (token_id,))
+    except psycopg2.Error:
+        logger.exception("Failed to consume verification token: %s", token_id)
         raise

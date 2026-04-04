@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevPulse — Palette Chooser</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&family=Fira+Code:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0a0f;
+    color: #f0f0f0;
+    font-family: 'DM Sans', sans-serif;
+    padding: 40px 32px 80px;
+    min-height: 100vh;
+  }
+
+  .page-header {
+    text-align: center;
+    margin-bottom: 56px;
+  }
+  .page-header h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 2.4rem;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.04em;
+    margin-bottom: 10px;
+  }
+  .page-header p {
+    color: #777;
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+  .page-header .badge {
+    display: inline-block;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+    color: #aaa;
+    font-size: 0.73rem;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 5px 14px;
+    border-radius: 50px;
+    margin-bottom: 18px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(580px, 1fr));
+    gap: 32px;
+    max-width: 1320px;
+    margin: 0 auto;
+  }
+
+  /* ── Palette card ── */
+  .palette-card {
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1.5px solid rgba(255,255,255,.07);
+    transition: transform .22s, border-color .22s, box-shadow .22s;
+    cursor: pointer;
+    position: relative;
+  }
+  .palette-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent, rgba(255,255,255,.2));
+    box-shadow: 0 12px 40px rgba(0,0,0,.5), 0 0 0 1px var(--accent, rgba(255,255,255,.1));
+  }
+  .palette-card .badge-number {
+    position: absolute;
+    top: 16px; right: 16px;
+    width: 30px; height: 30px;
+    background: rgba(0,0,0,.4);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 700;
+    color: rgba(255,255,255,.6);
+    font-family: 'Space Grotesk', sans-serif;
+    z-index: 10;
+  }
+
+  /* Dark half */
+  .dark-half {
+    padding: 24px 24px 20px;
+  }
+  /* Light half */
+  .light-half {
+    padding: 20px 24px 24px;
+    border-top: 1px solid rgba(0,0,0,.12);
+  }
+
+  .palette-name {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 3px;
+  }
+  .palette-tagline {
+    font-size: 0.78rem;
+    opacity: 0.55;
+    margin-bottom: 18px;
+  }
+
+  /* Color swatches */
+  .swatches {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .swatch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+  }
+  .swatch-dot {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    border: 1.5px solid rgba(255,255,255,.08);
+    flex-shrink: 0;
+  }
+  .swatch-label {
+    font-size: 0.58rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    opacity: 0.5;
+    font-family: 'Fira Code', monospace;
+  }
+
+  /* Mini UI preview */
+  .mini-ui {
+    border-radius: 12px;
+    padding: 14px;
+    border: 1.5px solid rgba(255,255,255,.06);
+    margin-bottom: 14px;
+  }
+  .mini-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .mini-logo {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 800;
+    font-size: 0.9rem;
+    letter-spacing: -0.02em;
+  }
+  .mini-btn {
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-family: 'Space Grotesk', sans-serif;
+    border: none;
+    cursor: pointer;
+  }
+  .mini-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .mini-tab {
+    padding: 4px 10px;
+    border-radius: 5px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .mini-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .mini-metric {
+    padding: 10px;
+    border-radius: 8px;
+    border: 1.5px solid rgba(255,255,255,.06);
+  }
+  .mini-metric-label {
+    font-size: 0.58rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 4px;
+    opacity: 0.5;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+  .mini-metric-value {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  /* Mini chart bars */
+  .mini-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 40px;
+    padding: 0 2px;
+  }
+  .mini-bar {
+    flex: 1;
+    border-radius: 3px 3px 0 0;
+    opacity: 0.85;
+  }
+  /* Badges */
+  .mini-badge-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .mini-badge {
+    padding: 3px 9px;
+    border-radius: 50px;
+    font-size: 0.67rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    border: 1px solid transparent;
+  }
+
+  /* Light side label */
+  .side-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    opacity: 0.4;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .side-label::before {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: currentColor;
+    opacity: 0.3;
+  }
+  .side-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: currentColor;
+    opacity: 0.3;
+  }
+
+  /* Light mini UI */
+  .light-mini-ui {
+    border-radius: 12px;
+    padding: 14px;
+    border: 1.5px solid rgba(0,0,0,.08);
+    box-shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+
+  /* Select overlay */
+  .select-overlay {
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    border: 3px solid transparent;
+    pointer-events: none;
+    transition: border-color .2s;
+  }
+  .palette-card:hover .select-overlay {
+    border-color: var(--accent);
+  }
+  .select-hint {
+    text-align: center;
+    font-size: 0.73rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 8px;
+    margin-top: 4px;
+    opacity: 0;
+    transition: opacity .2s;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+  .palette-card:hover .select-hint { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div class="badge">DevPulse — Choose your theme</div>
+  <h1>15 Palette Options</h1>
+  <p>No purple or blue. Hover each card to preview light &amp; dark. Click to select.</p>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+const palettes = [
+  {
+    id: 1,
+    name: "Terminal Emerald",
+    tagline: "Vercel minimal × green health dashboards",
+    dark: {
+      bg:      "#0a0f0a",
+      surf:    "#111a12",
+      card:    "#162018",
+      border:  "#1f3322",
+      text1:   "#f0fdf4",
+      text2:   "#86efac",
+      text3:   "#4d7a5c",
+      accent:  "#22c55e",
+      accent2: "#4ade80",
+      pos:     "#22c55e",
+      neg:     "#f87171",
+    },
+    light: {
+      bg:      "#f0faf2",
+      surf:    "#ffffff",
+      card:    "#f6fef7",
+      border:  "#bbf7d0",
+      text1:   "#0f1f13",
+      text2:   "#3d6b4a",
+      text3:   "#6b7280",
+      accent:  "#16a34a",
+      accent2: "#22c55e",
+      pos:     "#15803d",
+      neg:     "#dc2626",
+    },
+    bars: [32, 55, 45, 68, 50, 80, 62, 70, 58, 90],
+    accentHex: "#22c55e",
+  },
+  {
+    id: 2,
+    name: "Amber Forge",
+    tagline: "Grafana flame orange × warm analytics",
+    dark: {
+      bg:      "#0c0a07",
+      surf:    "#1a1508",
+      card:    "#211c0b",
+      border:  "#3d2f0d",
+      text1:   "#fffbeb",
+      text2:   "#fcd34d",
+      text3:   "#78600f",
+      accent:  "#f59e0b",
+      accent2: "#fbbf24",
+      pos:     "#34d399",
+      neg:     "#f87171",
+    },
+    light: {
+      bg:      "#fffbf5",
+      surf:    "#ffffff",
+      card:    "#fffdf7",
+      border:  "#fde68a",
+      text1:   "#1c1308",
+      text2:   "#92400e",
+      text3:   "#6b7280",
+      accent:  "#d97706",
+      accent2: "#f59e0b",
+      pos:     "#059669",
+      neg:     "#dc2626",
+    },
+    bars: [40, 65, 50, 75, 55, 85, 60, 78, 66, 95],
+    accentHex: "#f59e0b",
+  },
+  {
+    id: 3,
+    name: "Coral Signal",
+    tagline: "PostHog bold orange-red × event tracking",
+    dark: {
+      bg:      "#0d0807",
+      surf:    "#1a1010",
+      card:    "#221515",
+      border:  "#3d1f1c",
+      text1:   "#fff1f2",
+      text2:   "#fca5a5",
+      text3:   "#7a3535",
+      accent:  "#fb7185",
+      accent2: "#f43f5e",
+      pos:     "#4ade80",
+      neg:     "#f43f5e",
+    },
+    light: {
+      bg:      "#fff8f6",
+      surf:    "#ffffff",
+      card:    "#fff5f3",
+      border:  "#fecaca",
+      text1:   "#1a0a0a",
+      text2:   "#9f1239",
+      text3:   "#6b7280",
+      accent:  "#e11d48",
+      accent2: "#fb7185",
+      pos:     "#16a34a",
+      neg:     "#dc2626",
+    },
+    bars: [55, 72, 60, 88, 66, 95, 70, 82, 74, 100],
+    accentHex: "#fb7185",
+  },
+  {
+    id: 4,
+    name: "Slate & Teal",
+    tagline: "Linear obsidian × Google Analytics teal",
+    dark: {
+      bg:      "#080c0c",
+      surf:    "#0e1616",
+      card:    "#131f1f",
+      border:  "#1e3030",
+      text1:   "#f0fdfa",
+      text2:   "#5eead4",
+      text3:   "#256b5f",
+      accent:  "#2dd4bf",
+      accent2: "#5eead4",
+      pos:     "#2dd4bf",
+      neg:     "#fb7185",
+    },
+    light: {
+      bg:      "#f0fdfa",
+      surf:    "#ffffff",
+      card:    "#f5fffe",
+      border:  "#99f6e4",
+      text1:   "#071f1e",
+      text2:   "#0f766e",
+      text3:   "#6b7280",
+      accent:  "#0d9488",
+      accent2: "#2dd4bf",
+      pos:     "#0d9488",
+      neg:     "#e11d48",
+    },
+    bars: [38, 60, 48, 72, 54, 82, 65, 75, 60, 88],
+    accentHex: "#2dd4bf",
+  },
+  {
+    id: 5,
+    name: "Iron & Gold",
+    tagline: "Notion ink-black × Datadog alert gold",
+    dark: {
+      bg:      "#0a0a0a",
+      surf:    "#141414",
+      card:    "#1c1c1c",
+      border:  "#2a2a2a",
+      text1:   "#fafaf9",
+      text2:   "#a8a29e",
+      text3:   "#57534e",
+      accent:  "#eab308",
+      accent2: "#facc15",
+      pos:     "#4ade80",
+      neg:     "#f87171",
+    },
+    light: {
+      bg:      "#fafaf9",
+      surf:    "#ffffff",
+      card:    "#f5f5f4",
+      border:  "#e7e5e4",
+      text1:   "#1c1917",
+      text2:   "#57534e",
+      text3:   "#a8a29e",
+      accent:  "#ca8a04",
+      accent2: "#eab308",
+      pos:     "#16a34a",
+      neg:     "#dc2626",
+    },
+    bars: [45, 58, 50, 70, 52, 78, 63, 72, 56, 85],
+    accentHex: "#eab308",
+  },
+  {
+    id: 6,
+    name: "Oxide Orange",
+    tagline: "Retool builder UI × warm developer tools",
+    dark: {
+      bg:      "#0e0a07",
+      surf:    "#1a1208",
+      card:    "#221a0e",
+      border:  "#3a2810",
+      text1:   "#fff7ed",
+      text2:   "#fdba74",
+      text3:   "#7a4a1a",
+      accent:  "#f97316",
+      accent2: "#fb923c",
+      pos:     "#34d399",
+      neg:     "#f87171",
+    },
+    light: {
+      bg:      "#fff7ed",
+      surf:    "#ffffff",
+      card:    "#fffbf5",
+      border:  "#fed7aa",
+      text1:   "#1a0e05",
+      text2:   "#7c2d12",
+      text3:   "#6b7280",
+      accent:  "#ea580c",
+      accent2: "#f97316",
+      pos:     "#059669",
+      neg:     "#dc2626",
+    },
+    bars: [42, 62, 52, 74, 58, 86, 67, 76, 62, 92],
+    accentHex: "#f97316",
+  },
+  {
+    id: 7,
+    name: "Volcanic Slate",
+    tagline: "Amplitude/Segment charcoal × soft orange brand",
+    dark: {
+      bg:      "#0c0c0e",
+      surf:    "#16161a",
+      card:    "#1e1e24",
+      border:  "#2e2e3a",
+      text1:   "#f4f4f5",
+      text2:   "#a1a1aa",
+      text3:   "#52525b",
+      accent:  "#fb923c",
+      accent2: "#f97316",
+      pos:     "#22c55e",
+      neg:     "#ef4444",
+    },
+    light: {
+      bg:      "#fafafa",
+      surf:    "#ffffff",
+      card:    "#f4f4f6",
+      border:  "#e4e4e7",
+      text1:   "#09090b",
+      text2:   "#52525b",
+      text3:   "#a1a1aa",
+      accent:  "#ea580c",
+      accent2: "#fb923c",
+      pos:     "#16a34a",
+      neg:     "#dc2626",
+    },
+    bars: [35, 56, 46, 68, 52, 80, 60, 72, 58, 88],
+    accentHex: "#fb923c",
+  },
+
+  // ── 8 NEW PALETTES ──────────────────────────────────────────────────────
+  {
+    id: 8,
+    name: "Acid Wire",
+    tagline: "Raycast-style void black × neon lime terminal",
+    dark: {
+      bg:      "#090c0a",
+      surf:    "#111510",
+      card:    "#181e15",
+      border:  "#2a3325",
+      text1:   "#e8f5dc",
+      text2:   "#9ab882",
+      text3:   "#5a7a46",
+      accent:  "#a8ff3e",
+      accent2: "#d4ff80",
+      pos:     "#a8ff3e",
+      neg:     "#ff4444",
+    },
+    light: {
+      bg:      "#f4f7f0",
+      surf:    "#ffffff",
+      card:    "#eef4e8",
+      border:  "#c8d4be",
+      text1:   "#0d1a08",
+      text2:   "#3a5228",
+      text3:   "#6b8f52",
+      accent:  "#5c9e1a",
+      accent2: "#3e7a08",
+      pos:     "#3e7a08",
+      neg:     "#cc1a1a",
+    },
+    bars: [30, 52, 44, 70, 50, 84, 60, 76, 55, 92],
+    accentHex: "#a8ff3e",
+  },
+  {
+    id: 9,
+    name: "Blood Circuit",
+    tagline: "Security dashboard crimson × Railway bold brand",
+    dark: {
+      bg:      "#0c0808",
+      surf:    "#160d0d",
+      card:    "#1e1010",
+      border:  "#3d1515",
+      text1:   "#f5e0e0",
+      text2:   "#c08080",
+      text3:   "#8b4a4a",
+      accent:  "#e8243c",
+      accent2: "#ff6b6b",
+      pos:     "#4ade80",
+      neg:     "#e8243c",
+    },
+    light: {
+      bg:      "#faf4f4",
+      surf:    "#ffffff",
+      card:    "#f7eded",
+      border:  "#e0c0c0",
+      text1:   "#1a0505",
+      text2:   "#6b2020",
+      text3:   "#9b5050",
+      accent:  "#b80020",
+      accent2: "#d43030",
+      pos:     "#16a34a",
+      neg:     "#b80020",
+    },
+    bars: [50, 68, 58, 82, 64, 94, 72, 86, 68, 100],
+    accentHex: "#e8243c",
+  },
+  {
+    id: 10,
+    name: "Rose Engine",
+    tagline: "Figma warm rose gold × human-feeling analytics",
+    dark: {
+      bg:      "#0e0a0c",
+      surf:    "#180d12",
+      card:    "#201218",
+      border:  "#3d1e28",
+      text1:   "#f5dde6",
+      text2:   "#c485a0",
+      text3:   "#8b5570",
+      accent:  "#f472b6",
+      accent2: "#fbcfe8",
+      pos:     "#34d399",
+      neg:     "#f87171",
+    },
+    light: {
+      bg:      "#fdf6f8",
+      surf:    "#ffffff",
+      card:    "#faeef3",
+      border:  "#ebcdd6",
+      text1:   "#1a060c",
+      text2:   "#7a3050",
+      text3:   "#a05070",
+      accent:  "#c2185b",
+      accent2: "#e8638f",
+      pos:     "#059669",
+      neg:     "#dc2626",
+    },
+    bars: [44, 62, 54, 78, 60, 90, 68, 80, 65, 96],
+    accentHex: "#f472b6",
+  },
+  {
+    id: 11,
+    name: "Sea Glass",
+    tagline: "Neon DB seafoam × calm clarity under the noise",
+    dark: {
+      bg:      "#080d0c",
+      surf:    "#0d1614",
+      card:    "#121f1c",
+      border:  "#1c3530",
+      text1:   "#d8f4ef",
+      text2:   "#72bfb2",
+      text3:   "#3d8c80",
+      accent:  "#2dd4bf",
+      accent2: "#5eead4",
+      pos:     "#2dd4bf",
+      neg:     "#fb7185",
+    },
+    light: {
+      bg:      "#f2faf8",
+      surf:    "#ffffff",
+      card:    "#e8f5f2",
+      border:  "#b8ddd7",
+      text1:   "#061210",
+      text2:   "#1f6b60",
+      text3:   "#4a9088",
+      accent:  "#0d9488",
+      accent2: "#14b8a6",
+      pos:     "#0d9488",
+      neg:     "#e11d48",
+    },
+    bars: [38, 56, 48, 72, 52, 82, 62, 74, 58, 88],
+    accentHex: "#2dd4bf",
+  },
+  {
+    id: 12,
+    name: "Volt Signal",
+    tagline: "Fly.io chartreuse × maximum visibility infrastructure",
+    dark: {
+      bg:      "#0a0b07",
+      surf:    "#13160a",
+      card:    "#1a1f0f",
+      border:  "#303d18",
+      text1:   "#f0f5cc",
+      text2:   "#aabc4a",
+      text3:   "#728030",
+      accent:  "#d4ff00",
+      accent2: "#eaff70",
+      pos:     "#d4ff00",
+      neg:     "#ff5555",
+    },
+    light: {
+      bg:      "#f8faf0",
+      surf:    "#ffffff",
+      card:    "#eef4dc",
+      border:  "#d0dc90",
+      text1:   "#0f1500",
+      text2:   "#4a5e00",
+      text3:   "#6a8010",
+      accent:  "#7a9900",
+      accent2: "#a0c000",
+      pos:     "#7a9900",
+      neg:     "#dd1111",
+    },
+    bars: [33, 55, 45, 68, 52, 80, 62, 74, 57, 90],
+    accentHex: "#d4ff00",
+  },
+  {
+    id: 13,
+    name: "Fuchsia Core",
+    tagline: "Cyberpunk magenta × 2025 neon breakout accent",
+    dark: {
+      bg:      "#0c080d",
+      surf:    "#160e18",
+      card:    "#1e1222",
+      border:  "#3d1a48",
+      text1:   "#f7e0ff",
+      text2:   "#c870e8",
+      text3:   "#8b4aa8",
+      accent:  "#e879f9",
+      accent2: "#f0abfc",
+      pos:     "#34d399",
+      neg:     "#f87171",
+    },
+    light: {
+      bg:      "#fbf5fc",
+      surf:    "#ffffff",
+      card:    "#f4e8f7",
+      border:  "#e2c0ee",
+      text1:   "#1a001f",
+      text2:   "#7a20a0",
+      text3:   "#a040c8",
+      accent:  "#a21caf",
+      accent2: "#c026d3",
+      pos:     "#059669",
+      neg:     "#dc2626",
+    },
+    bars: [46, 64, 54, 80, 62, 94, 70, 83, 66, 98],
+    accentHex: "#e879f9",
+  },
+  {
+    id: 14,
+    name: "Desert Stack",
+    tagline: "Pantone Mocha Mousse 2025 × grounded developer tools",
+    dark: {
+      bg:      "#0d0a07",
+      surf:    "#181109",
+      card:    "#211808",
+      border:  "#3d2d18",
+      text1:   "#f5ead8",
+      text2:   "#c4956a",
+      text3:   "#8b6040",
+      accent:  "#e8924a",
+      accent2: "#f5c07a",
+      pos:     "#6ecc6e",
+      neg:     "#e85050",
+    },
+    light: {
+      bg:      "#faf6f1",
+      surf:    "#ffffff",
+      card:    "#f2ead8",
+      border:  "#dcc8a8",
+      text1:   "#1a0e02",
+      text2:   "#7a4a20",
+      text3:   "#9a6a40",
+      accent:  "#b85a10",
+      accent2: "#d4781a",
+      pos:     "#2e8b2e",
+      neg:     "#c01a1a",
+    },
+    bars: [40, 60, 50, 72, 55, 84, 64, 76, 60, 90],
+    accentHex: "#e8924a",
+  },
+  {
+    id: 15,
+    name: "Silver Ghost",
+    tagline: "Vercel Geist mono × single white-hot pop accent",
+    dark: {
+      bg:      "#080808",
+      surf:    "#111111",
+      card:    "#1a1a1a",
+      border:  "#2e2e2e",
+      text1:   "#f0f0f0",
+      text2:   "#909090",
+      text3:   "#585858",
+      accent:  "#ffffff",
+      accent2: "#c8c8c8",
+      pos:     "#5cd65c",
+      neg:     "#ff4444",
+    },
+    light: {
+      bg:      "#f8f8f8",
+      surf:    "#ffffff",
+      card:    "#eeeeee",
+      border:  "#d0d0d0",
+      text1:   "#0a0a0a",
+      text2:   "#484848",
+      text3:   "#787878",
+      accent:  "#000000",
+      accent2: "#303030",
+      pos:     "#1e8c1e",
+      neg:     "#cc0000",
+    },
+    bars: [36, 54, 46, 66, 52, 78, 60, 72, 56, 86],
+    accentHex: "#e0e0e0",
+  },
+];
+
+function swatches(p, mode) {
+  const d = p[mode];
+  const items = [
+    { color: d.bg,      label: "BG" },
+    { color: d.surf,    label: "Surf" },
+    { color: d.card,    label: "Card" },
+    { color: d.accent,  label: "Primary" },
+    { color: d.accent2, label: "Accent 2" },
+    { color: d.pos,     label: "Positive" },
+    { color: d.neg,     label: "Negative" },
+    { color: d.text1,   label: "Text" },
+    { color: d.text2,   label: "Text 2" },
+    { color: d.border,  label: "Border" },
+  ];
+  return `<div class="swatches">${items.map(s =>
+    `<div class="swatch">
+      <div class="swatch-dot" style="background:${s.color};border-color:${mode==='dark'?'rgba(255,255,255,.1)':'rgba(0,0,0,.08)'}"></div>
+      <span class="swatch-label" style="color:${d.text2}">${s.label}</span>
+    </div>`
+  ).join('')}</div>`;
+}
+
+function miniDark(p) {
+  const d = p.dark;
+  const barHeights = p.bars;
+  const bars = barHeights.map((h, i) => {
+    const color = i % 3 === 0 ? d.neg : i % 3 === 1 ? d.accent : d.pos;
+    return `<div class="mini-bar" style="height:${h}%;background:${color}"></div>`;
+  }).join('');
+
+  return `
+  <div class="mini-ui" style="background:${d.surf};border-color:${d.border}">
+    <div class="mini-header">
+      <div class="mini-logo" style="color:${d.text1}">Dev<span style="color:${d.accent}">Pulse</span></div>
+      <button class="mini-btn" style="background:${d.accent};color:#000">Dashboard</button>
+    </div>
+    <div class="mini-tabs">
+      <div class="mini-tab" style="background:${d.accent};color:#000;font-weight:700">Live Feed</div>
+      <div class="mini-tab" style="color:${d.text2}">Trends</div>
+      <div class="mini-tab" style="color:${d.text2}">Tools</div>
+      <div class="mini-tab" style="color:${d.text2}">Reports</div>
+    </div>
+    <div class="mini-metrics">
+      <div class="mini-metric" style="background:${d.card};border-color:${d.border}">
+        <div class="mini-metric-label" style="color:${d.text3}">Posts</div>
+        <div class="mini-metric-value" style="color:${d.text1}">12,847</div>
+      </div>
+      <div class="mini-metric" style="background:${d.card};border-color:${d.border}">
+        <div class="mini-metric-label" style="color:${d.text3}">Sentiment</div>
+        <div class="mini-metric-value" style="color:${d.pos}">+0.72</div>
+      </div>
+      <div class="mini-metric" style="background:${d.card};border-color:${d.border}">
+        <div class="mini-metric-label" style="color:${d.text3}">Alerts</div>
+        <div class="mini-metric-value" style="color:${d.neg}">3</div>
+      </div>
+    </div>
+    <div class="mini-chart">${bars}</div>
+    <div class="mini-badge-row">
+      <span class="mini-badge" style="background:${d.pos}22;border-color:${d.pos}44;color:${d.pos}">positive</span>
+      <span class="mini-badge" style="background:${d.neg}22;border-color:${d.neg}44;color:${d.neg}">spike alert</span>
+      <span class="mini-badge" style="background:${d.accent}22;border-color:${d.accent}44;color:${d.accent}">trending</span>
+    </div>
+  </div>`;
+}
+
+function miniLight(p) {
+  const l = p.light;
+  const barHeights = p.bars;
+  const bars = barHeights.map((h, i) => {
+    const color = i % 3 === 0 ? l.neg : i % 3 === 1 ? l.accent : l.pos;
+    return `<div class="mini-bar" style="height:${h}%;background:${color};opacity:0.8"></div>`;
+  }).join('');
+
+  return `
+  <div class="light-mini-ui" style="background:${l.surf};border-color:${l.border}">
+    <div class="mini-header">
+      <div class="mini-logo" style="color:${l.text1}">Dev<span style="color:${l.accent}">Pulse</span></div>
+      <button class="mini-btn" style="background:${l.accent};color:#fff">Dashboard</button>
+    </div>
+    <div class="mini-metrics">
+      <div class="mini-metric" style="background:${l.card};border-color:${l.border};box-shadow:0 1px 4px rgba(0,0,0,.07)">
+        <div class="mini-metric-label" style="color:${l.text3}">Posts</div>
+        <div class="mini-metric-value" style="color:${l.text1}">12,847</div>
+      </div>
+      <div class="mini-metric" style="background:${l.card};border-color:${l.border};box-shadow:0 1px 4px rgba(0,0,0,.07)">
+        <div class="mini-metric-label" style="color:${l.text3}">Sentiment</div>
+        <div class="mini-metric-value" style="color:${l.pos}">+0.72</div>
+      </div>
+      <div class="mini-metric" style="background:${l.card};border-color:${l.border};box-shadow:0 1px 4px rgba(0,0,0,.07)">
+        <div class="mini-metric-label" style="color:${l.text3}">Alerts</div>
+        <div class="mini-metric-value" style="color:${l.neg}">3</div>
+      </div>
+    </div>
+    <div class="mini-chart" style="margin-top:10px">${bars}</div>
+    <div class="mini-badge-row" style="margin-top:8px">
+      <span class="mini-badge" style="background:${l.pos}18;border-color:${l.pos}44;color:${l.pos}">positive</span>
+      <span class="mini-badge" style="background:${l.neg}18;border-color:${l.neg}44;color:${l.neg}">spike alert</span>
+      <span class="mini-badge" style="background:${l.accent}18;border-color:${l.accent}44;color:${l.accent}">trending</span>
+    </div>
+  </div>`;
+}
+
+const grid = document.getElementById('grid');
+
+palettes.forEach(p => {
+  const d = p.dark;
+  const l = p.light;
+
+  const card = document.createElement('div');
+  card.className = 'palette-card';
+  card.style.setProperty('--accent', p.accentHex);
+  card.style.background = d.bg;
+
+  card.innerHTML = `
+    <div class="select-overlay"></div>
+    <span class="badge-number">${p.id}</span>
+
+    <!-- DARK HALF -->
+    <div class="dark-half">
+      <div class="palette-name" style="color:${d.text1}">${p.name}</div>
+      <div class="palette-tagline" style="color:${d.text2}">${p.tagline}</div>
+
+      <div class="side-label" style="color:${d.text3}">Dark mode</div>
+      ${swatches(p, 'dark')}
+      ${miniDark(p)}
+    </div>
+
+    <!-- LIGHT HALF -->
+    <div class="light-half" style="background:${l.bg}">
+      <div class="side-label" style="color:${l.text3}">Light mode</div>
+      ${swatches(p, 'light')}
+      ${miniLight(p)}
+    </div>
+
+    <div class="select-hint" style="background:${d.bg};color:${p.accentHex}">
+      Click to apply this palette →
+    </div>
+  `;
+
+  card.addEventListener('click', () => {
+    alert(`You selected: "${p.name}" (Option ${p.id})\n\nGo back to Claude and say:\n"Apply palette ${p.id} — ${p.name}"`);
+  });
+
+  grid.appendChild(card);
+});
+</script>
+</body>
+</html>
