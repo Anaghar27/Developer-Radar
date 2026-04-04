@@ -19,7 +19,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-from dashboard.api_client import forgot_password, login, register, reset_password, verify_email  # noqa: E402
+from dashboard.api_client import forgot_password, login, register, reset_password, verify_email  # noqa: E402, I001
 
 _COOKIE_TOKEN = "dp_session_token"
 _COOKIE_EMAIL = "dp_session_email"

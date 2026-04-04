@@ -46,7 +46,6 @@ def render() -> None:
 
     # ── Metrics ───────────────────────────────────────────────────────────────
     avg_sent = df["avg_sentiment"].mean()
-    delta_color = "normal" if avg_sent >= 0 else "inverse"
     metric_row([
         {"label": "Data Points",   "value": len(df)},
         {"label": "Avg Sentiment", "value": f"{avg_sent:.3f}"},
