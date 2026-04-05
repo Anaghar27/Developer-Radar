@@ -6,6 +6,16 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 _SPECIAL_CHARS = set("!@#$%^&*()_+-=[]{}|;':\",./<>?")
 
+
+def _validate_password_strength(v: str) -> str:
+    if not any(c.isupper() for c in v):
+        raise ValueError("Password must contain at least one uppercase letter.")
+    if not any(c.isdigit() for c in v):
+        raise ValueError("Password must contain at least one number.")
+    if not any(c in _SPECIAL_CHARS for c in v):
+        raise ValueError("Password must contain at least one special character.")
+    return v
+
 class UserRegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
@@ -13,13 +23,7 @@ class UserRegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter.")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one number.")
-        if not any(c in _SPECIAL_CHARS for c in v):
-            raise ValueError("Password must contain at least one special character.")
-        return v
+        return _validate_password_strength(v)
 
 class UserRegisterResponse(BaseModel):
     user_id: int
@@ -170,11 +174,17 @@ class ForgotPasswordRequest(BaseModel):
 
 class ForgotPasswordResponse(BaseModel):
     message: str
+    otp_sent: bool = False
     reset_token: str | None = None  # OTP returned in dev mode when SMTP is not configured
 
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str = Field(min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        return _validate_password_strength(v)
 
 class ResetPasswordResponse(BaseModel):
     message: str
@@ -183,6 +193,13 @@ class VerifyEmailRequest(BaseModel):
     token: str
 
 class VerifyEmailResponse(BaseModel):
+    message: str
+
+class VerifyOtpRequest(BaseModel):
+    token: str
+
+class VerifyOtpResponse(BaseModel):
+    valid: bool
     message: str
 
 

@@ -111,8 +111,12 @@ def post_is_processed(post_id: str) -> bool:
         raise
 
 
-def insert_processed_post(data: dict) -> None:
-    """Insert structured LLM output into processed_posts."""
+def insert_processed_post(data: dict) -> bool:
+    """Insert structured LLM output into processed_posts.
+
+    Returns True when a new row is inserted and False when the post was already
+    processed by another worker or a previous run.
+    """
     query = """
         INSERT INTO processed_posts (
             post_id,
@@ -125,6 +129,8 @@ def insert_processed_post(data: dict) -> None:
             processed_at
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, COALESCE(%s, NOW()))
+        ON CONFLICT (post_id) DO NOTHING
+        RETURNING post_id
     """
     try:
         with get_connection() as conn:
@@ -142,6 +148,7 @@ def insert_processed_post(data: dict) -> None:
                         data.get("processed_at"),
                     ),
                 )
+                return cur.fetchone() is not None
     except psycopg2.Error:
         logger.exception("Failed to insert processed post: %s", data.get("post_id"))
         raise
@@ -674,6 +681,24 @@ def fetch_user_by_email(email: str) -> dict | None:
                 return dict(row) if row else None
     except psycopg2.Error:
         logger.exception("Failed to fetch user by email: %s", email)
+        raise
+
+
+def fetch_user_by_id(user_id: int) -> dict | None:
+    """Fetch a user by id. Returns dict or None."""
+    query = """
+        SELECT id, email, hashed_password, api_key, is_active, created_at
+        FROM users
+        WHERE id = %s
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+                cur.execute(query, (user_id,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+    except psycopg2.Error:
+        logger.exception("Failed to fetch user by id: %s", user_id)
         raise
 
 

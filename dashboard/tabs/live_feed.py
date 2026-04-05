@@ -44,50 +44,51 @@ def render() -> None:
     if st.session_state.get("lf_filters") != filter_signature:
         st.session_state["lf_page"] = 0
         st.session_state["lf_filters"] = filter_signature
+        st.session_state.pop("lf_full_df", None)
+        st.session_state.pop("lf_total_available", None)
 
     page = st.session_state.get("lf_page", 0)
     max_rows = int(limit)
-    max_pages = max(1, (max_rows + PAGE_SIZE - 1) // PAGE_SIZE)
-    page = max(0, min(page, max_pages - 1))
-    offset = page * PAGE_SIZE
 
-    # ── Fetch ─────────────────────────────────────────────────────────────────
-    params: dict = {"limit": PAGE_SIZE, "offset": offset}
-    if source and source != "All":
-        params["source"] = source
-    if topic:
-        params["topic"] = topic
-    if sentiment:
-        params["sentiment"] = sentiment
+    # ── Fetch all posts up to max_rows (cached per filter signature) ──────────
+    # Stats are computed over the full set; the table is paginated client-side.
+    if "lf_full_df" not in st.session_state:
+        params: dict = {"limit": max_rows, "offset": 0}
+        if source and source != "All":
+            params["source"] = source
+        if topic:
+            params["topic"] = topic
+        if sentiment:
+            params["sentiment"] = sentiment
 
-    data = api_get("/posts", params=params)
-    if not data:
-        return
+        data = api_get("/posts", params=params)
+        if not data:
+            return
 
-    posts = data.get("posts", [])
-    if not posts:
-        st.info("No posts found for the selected filters.")
-        return
+        all_posts = data.get("posts", [])
+        if not all_posts:
+            st.info("No posts found for the selected filters.")
+            return
 
-    df = pd.DataFrame(posts)
-    total_available = int(data.get("total", len(posts)))
-    total_rows = min(total_available, max_rows)
+        st.session_state["lf_full_df"] = pd.DataFrame(all_posts)
+        st.session_state["lf_total_available"] = int(data.get("total", len(all_posts)))
+
+    full_df: pd.DataFrame = st.session_state["lf_full_df"]
+    total_available: int = st.session_state["lf_total_available"]
+
+    total_rows = len(full_df)
     total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
 
-    if page >= total_pages:
-        st.session_state["lf_page"] = max(0, total_pages - 1)
-        st.rerun()
-
-    # ── Metrics ───────────────────────────────────────────────────────────────
-    total     = total_available
-    pos       = len(df[df["sentiment"] == "positive"])  if "sentiment" in df.columns else 0
-    neu       = len(df[df["sentiment"] == "neutral"])   if "sentiment" in df.columns else 0
-    neg       = len(df[df["sentiment"] == "negative"])  if "sentiment" in df.columns else 0
-    avg_contr = df["controversy_score"].mean()           if "controversy_score" in df.columns else 0
+    # ── Metrics (over full fetched set, not just current page) ────────────────
+    pos       = len(full_df[full_df["sentiment"] == "positive"])  if "sentiment" in full_df.columns else 0
+    neu       = len(full_df[full_df["sentiment"] == "neutral"])   if "sentiment" in full_df.columns else 0
+    neg       = len(full_df[full_df["sentiment"] == "negative"])  if "sentiment" in full_df.columns else 0
+    avg_contr = full_df["controversy_score"].mean()                if "controversy_score" in full_df.columns else 0
 
     metric_row([
-        {"label": "Total in DB",     "value": f"{total:,}"},
-        {"label": "Current Page",    "value": len(posts)},
+        {"label": "Total in DB",     "value": f"{total_available:,}"},
+        {"label": "Max Posts",       "value": f"{total_rows:,}"},
         {"label": "Positive",        "value": pos},
         {"label": "Neutral",         "value": neu},
         {"label": "Negative",        "value": neg},
@@ -96,12 +97,12 @@ def render() -> None:
 
     st.divider()
 
-    # ── Posts table with pagination ────────────────────────────────────────────
+    # ── Posts table with client-side pagination ───────────────────────────────
     display_cols = ["title", "source", "sentiment", "emotion", "topic", "tool_mentioned", "score"]
-    available = [c for c in display_cols if c in df.columns]
+    available = [c for c in display_cols if c in full_df.columns]
     start = page * PAGE_SIZE
-    end = min(start + len(df), total_rows)
-    page_df = df[available]
+    end = min(start + PAGE_SIZE, total_rows)
+    page_df = full_df[available].iloc[start:end]
 
     # Build table HTML
     header_html = "".join(

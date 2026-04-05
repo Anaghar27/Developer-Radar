@@ -6,7 +6,7 @@ from threading import Event
 from unittest.mock import MagicMock, patch
 
 from processing.embedder import embed_post
-from processing.llm_processor import _parse_response, classify_post
+from processing.llm_processor import _parse_response, _process_single, classify_post
 from processing.prompts import format_prompt
 
 VALID_RESPONSE = json.dumps(
@@ -144,6 +144,27 @@ def test_classify_post_llm_failure_routes_to_dead_letter():
             assert result is None
             mock_dead_letter.assert_called_once()
             assert mock_dead_letter.call_args.kwargs["event_type"] == "classification"
+
+
+def test_process_single_treats_conflicting_insert_as_skipped():
+    """A duplicate processed row should be treated as an idempotent skip, not a worker error."""
+    counters = {"processed": 0, "failed": 0, "skipped": 0}
+    lock = MagicMock()
+    post = {"id": "post-1", "title": "Test", "body": "Body"}
+
+    with patch("processing.llm_processor.db_client.post_is_processed", return_value=False), \
+         patch("processing.llm_processor.classify_post", return_value=json.loads(VALID_RESPONSE)), \
+         patch("processing.llm_processor.db_client.insert_processed_post", return_value=False):
+        _process_single(
+            post=post,
+            index=1,
+            total=1,
+            lock=lock,
+            counters=counters,
+            openai_fallback=Event(),
+        )
+
+    assert counters == {"processed": 0, "failed": 0, "skipped": 1}
 
 
 def test_embed_post_shape():

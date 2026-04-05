@@ -25,7 +25,7 @@ def render() -> None:
     section_header(
         "🧠",
         "Intelligence Reports",
-        "Ask natural-language questions — answers are grounded entirely in Reddit and Hacker News posts via Corrective RAG.",
+        "Ask questions to the system — answers are grounded entirely in Reddit and Hacker News posts.",
     )
 
     # ── Two-column layout ─────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ def render() -> None:
             st.warning("Please enter a question before submitting.")
 
     with sugg_col:
-        st.markdown('<span class="dp-query-hint">Quick questions</span>', unsafe_allow_html=True)
+        st.markdown('<span class="dp-query-hint">Quick questions</span><span class="dp-sugg-marker"></span>', unsafe_allow_html=True)
         for i, suggestion in enumerate(_SUGGESTIONS):
             if st.button(suggestion, key=f"sugg_{i}", use_container_width=True, type="secondary"):
                 st.session_state["suggested_query"] = suggestion
@@ -129,25 +129,104 @@ def render() -> None:
         unsafe_allow_html=True,
     )
 
+    # CSS: style each alert card green and make the expander blend in as part of the card.
+    st.markdown("""
+    <style>
+    .dp-alert-card {
+        background: #0d2818;
+        border: 1px solid #1a4a2e;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        overflow: hidden;
+    }
+    .dp-alert-card-header {
+        display: flex;
+        align-items: center;
+        padding: 14px 18px;
+        gap: 12px;
+    }
+    .dp-alert-card-topic {
+        font-weight: 600;
+        font-size: 15px;
+        color: #e2e8f0;
+        flex: 1;
+    }
+    .dp-alert-card-meta {
+        font-size: 13px;
+        color: #718096;
+    }
+    .dp-alert-card-pct {
+        font-size: 14px;
+        font-weight: 700;
+        color: #48bb78;
+        min-width: 52px;
+        text-align: right;
+    }
+    /* Target the expander that immediately follows this card header —
+       strip its default border/background so it merges with the card */
+    .dp-alert-card + div [data-testid="stExpander"] {
+        border: none !important;
+        border-top: 1px solid #1a4a2e !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     alerts_data = api_get("/alerts", params={"limit": 10})
     if alerts_data and alerts_data.get("alerts"):
         df = pd.DataFrame(alerts_data["alerts"])
         df["triggered_at"] = pd.to_datetime(df["triggered_at"])
 
-        rows_html = ""
         for _, row in df.iterrows():
             pct       = row.get("pct_increase", 0)
             triggered = row["triggered_at"].strftime("%b %d, %H:%M")
             today     = int(row.get("today_count", 0))
             avg       = int(row.get("rolling_avg", 0))
-            rows_html += (
-                f'<div class="dp-alert-row">'
-                f'<span class="dp-alert-topic">{row["topic"]}</span>'
-                f'<span class="dp-alert-meta">{today:,} posts · 7d avg {avg:,}</span>'
-                f'<span class="dp-alert-pct">+{pct:.0f}%</span>'
-                f'<span class="dp-alert-meta">{triggered}</span>'
-                f'</div>'
-            )
-        st.markdown(rows_html, unsafe_allow_html=True)
+            topic     = row["topic"]
+
+            with st.container():
+                st.markdown(
+                    f'<div class="dp-alert-card">'
+                    f'<div class="dp-alert-card-header">'
+                    f'<span class="dp-alert-card-topic">{topic}</span>'
+                    f'<span class="dp-alert-card-meta">{today:,} posts · 7d avg {avg:,}</span>'
+                    f'<span class="dp-alert-card-pct">+{pct:.0f}%</span>'
+                    f'<span class="dp-alert-card-meta">{triggered}</span>'
+                    f'</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                with st.expander(f"Show latest posts in {topic} ↓", expanded=False):
+                    posts_data = api_get("/posts", params={"topic": topic, "limit": 5})
+                    if posts_data and posts_data.get("posts"):
+                        for post in posts_data["posts"]:
+                            sentiment = post.get("sentiment") or "neutral"
+                            tool      = post.get("tool_mentioned")
+                            url       = post.get("url", "")
+                            title     = post.get("title", "Untitled")
+                            source    = post.get("source", "")
+                            post_date = post.get("post_date", "")
+
+                            title_html = (
+                                f'<a href="{url}" target="_blank" rel="noopener" '
+                                f'style="color:#90cdf4;text-decoration:none">{title}</a>'
+                                if url else title
+                            )
+                            meta = f"{source} · {post_date}"
+                            if tool:
+                                meta += f" · {tool}"
+
+                            st.markdown(
+                                f'<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06)">'
+                                f'<div style="font-size:14px;margin-bottom:4px">{title_html}</div>'
+                                f'<div style="font-size:12px;color:#718096">{meta} · '
+                                f'<span style="text-transform:capitalize">{sentiment}</span>'
+                                f'</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                    else:
+                        st.caption("No recent posts found for this topic.")
     else:
         st.info("No volume spike alerts detected recently.")

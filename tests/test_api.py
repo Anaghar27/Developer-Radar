@@ -42,7 +42,7 @@ def auth_token(client):
          patch("api.auth.router.insert_user", return_value=1):
         client.post("/auth/register", json={
             "email": "testuser@devpulse.com",
-            "password": "testpass123",
+            "password": "Testpass123!",
         })
 
     with patch("api.auth.router.fetch_user_by_email", return_value={
@@ -53,7 +53,7 @@ def auth_token(client):
     }), patch("api.auth.router.verify_password", return_value=True):
         response = client.post("/auth/token", json={
             "email": "testuser@devpulse.com",
-            "password": "testpass123",
+            "password": "Testpass123!",
         })
     return response.json()["access_token"]
 
@@ -119,6 +119,12 @@ def test_login_wrong_password(client):
     assert response.status_code == 401
 
 
+def test_openapi_includes_verify_otp_route(client):
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    assert "/auth/verify-otp" in response.json()["paths"]
+
+
 # ── Posts ─────────────────────────────────────────────────────────────────────
 
 def test_posts_requires_auth(client):
@@ -169,6 +175,7 @@ def test_forgot_password_dev_mode_returns_token(client):
 
     assert response.status_code == 200
     body = response.json()
+    assert body["otp_sent"] is True
     assert body["reset_token"] is not None
     assert len(body["reset_token"]) > 0
 
@@ -182,38 +189,62 @@ def test_forgot_password_smtp_configured_no_token_in_response(client):
         response = client.post("/auth/forgot-password", json={"email": "user@devpulse.com"})
 
     assert response.status_code == 200
+    assert response.json()["otp_sent"] is True
     assert response.json().get("reset_token") is None
     assert "message" in response.json()
 
 
 def test_forgot_password_unknown_email_returns_200(client):
-    """Unknown email still returns 200 — never reveal whether an email is registered."""
+    """Unknown email still returns 200 but does not advance the reset flow."""
     with patch("api.auth.router.fetch_user_by_email", return_value=None):
         response = client.post("/auth/forgot-password", json={"email": "ghost@nowhere.com"})
 
     assert response.status_code == 200
+    assert response.json()["otp_sent"] is False
     assert response.json().get("reset_token") is None
 
 
 def test_forgot_password_inactive_account_returns_200(client):
-    """Inactive account behaves the same as unknown email — no token, no error."""
+    """Inactive account behaves the same as unknown email — no token, no OTP flow."""
     with patch("api.auth.router.fetch_user_by_email", return_value={
         "id": 2, "email": "inactive@devpulse.com", "is_active": False,
     }):
         response = client.post("/auth/forgot-password", json={"email": "inactive@devpulse.com"})
 
     assert response.status_code == 200
+    assert response.json()["otp_sent"] is False
     assert response.json().get("reset_token") is None
+
+
+def test_verify_otp_success(client):
+    with patch("api.auth.router.fetch_reset_token", return_value={"id": 10, "user_id": 1}):
+        response = client.post("/auth/verify-otp", json={"token": "valid-token-abc"})
+
+    assert response.status_code == 200
+    assert response.json() == {"valid": True, "message": "OTP verified."}
+
+
+def test_verify_otp_invalid(client):
+    with patch("api.auth.router.fetch_reset_token", return_value=None):
+        response = client.post("/auth/verify-otp", json={"token": "bad-token"})
+
+    assert response.status_code == 200
+    assert response.json() == {"valid": False, "message": "Invalid or expired OTP."}
 
 
 def test_reset_password_success(client):
     """Valid token and matching passwords → 200 and password is updated."""
     with patch("api.auth.router.fetch_reset_token", return_value={"id": 10, "user_id": 1}), \
+         patch("api.auth.router.fetch_user_by_id", return_value={
+             "id": 1,
+             "hashed_password": "existing-hash",
+         }), \
+         patch("api.auth.router.verify_password", return_value=False), \
          patch("api.auth.router.update_user_password") as mock_update, \
          patch("api.auth.router.consume_reset_token") as mock_consume:
         response = client.post("/auth/reset-password", json={
             "token": "valid-token-abc",
-            "new_password": "newpass123",
+            "new_password": "Newpass123!",
         })
 
     assert response.status_code == 200
@@ -227,18 +258,18 @@ def test_reset_password_invalid_token(client):
     with patch("api.auth.router.fetch_reset_token", return_value=None):
         response = client.post("/auth/reset-password", json={
             "token": "bad-token",
-            "new_password": "newpass123",
+            "new_password": "Newpass123!",
         })
 
     assert response.status_code == 400
     assert "invalid" in response.json()["detail"].lower()
 
 
-def test_reset_password_too_short(client):
-    """Password shorter than 8 characters → 422 validation error."""
+def test_reset_password_weak_password(client):
+    """Reset password enforces the same strength rules as registration."""
     response = client.post("/auth/reset-password", json={
         "token": "some-token",
-        "new_password": "short",
+        "new_password": "abcdefgh",
     })
     assert response.status_code == 422
 
@@ -246,11 +277,36 @@ def test_reset_password_too_short(client):
 def test_reset_password_consumes_token_only_once(client):
     """consume_reset_token is called exactly once per successful reset."""
     with patch("api.auth.router.fetch_reset_token", return_value={"id": 99, "user_id": 5}), \
+         patch("api.auth.router.fetch_user_by_id", return_value={
+             "id": 5,
+             "hashed_password": "existing-hash",
+         }), \
+         patch("api.auth.router.verify_password", return_value=False), \
          patch("api.auth.router.update_user_password"), \
          patch("api.auth.router.consume_reset_token") as mock_consume:
         client.post("/auth/reset-password", json={
             "token": "one-time-token",
-            "new_password": "securepass99",
+            "new_password": "Securepass99!",
         })
 
     mock_consume.assert_called_once_with(99)
+
+
+def test_reset_password_rejects_current_password(client):
+    with patch("api.auth.router.fetch_reset_token", return_value={"id": 99, "user_id": 5}), \
+         patch("api.auth.router.fetch_user_by_id", return_value={
+             "id": 5,
+             "hashed_password": "existing-hash",
+         }), \
+         patch("api.auth.router.verify_password", return_value=True), \
+         patch("api.auth.router.update_user_password") as mock_update, \
+         patch("api.auth.router.consume_reset_token") as mock_consume:
+        response = client.post("/auth/reset-password", json={
+            "token": "one-time-token",
+            "new_password": "Securepass99!",
+        })
+
+    assert response.status_code == 400
+    assert "same as the current password" in response.json()["detail"].lower()
+    mock_update.assert_not_called()
+    mock_consume.assert_not_called()

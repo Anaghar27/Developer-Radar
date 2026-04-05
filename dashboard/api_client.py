@@ -3,7 +3,7 @@ import os
 import requests
 import streamlit as st
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
 
 def get_token() -> str | None:
@@ -97,6 +97,35 @@ def forgot_password(email: str) -> dict | None:
     except Exception as e:
         st.error(f"Request failed: {e}")
         return None
+
+
+def verify_reset_otp(token: str) -> dict:
+    """Check whether a reset OTP is valid without consuming it."""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/auth/verify-otp",
+            json={"token": token},
+            timeout=10,
+        )
+        if response.status_code == 200:
+            body = response.json()
+            return {
+                "valid": bool(body.get("valid", False)),
+                "message": body.get("message", "OTP verification failed."),
+            }
+        if response.status_code == 404:
+            return {
+                "valid": False,
+                "message": "OTP verification is unavailable on the API. Restart or redeploy the backend.",
+            }
+        try:
+            body = response.json()
+            message = body.get("detail") or body.get("message") or "OTP verification failed."
+        except Exception:
+            message = "OTP verification failed."
+        return {"valid": False, "message": message}
+    except Exception as e:
+        return {"valid": False, "message": f"OTP verification failed: {e}"}
 
 
 def reset_password(token: str, new_password: str) -> bool:

@@ -139,7 +139,13 @@ def _process_single(
         logger.warning("Post %s/%s FAILED [%.1fs]: %s", index, total, elapsed, post_id)
         return
 
-    db_client.insert_processed_post({**classification, "post_id": post_id})
+    inserted = db_client.insert_processed_post({**classification, "post_id": post_id})
+    if not inserted:
+        with lock:
+            counters["skipped"] += 1
+        logger.info("Post %s/%s SKIPPED [%.1fs]: %s already processed", index, total, elapsed, post_id)
+        return
+
     with lock:
         counters["processed"] += 1
         done = counters["processed"] + counters["failed"] + counters["skipped"]

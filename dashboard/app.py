@@ -19,11 +19,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-from dashboard.api_client import forgot_password, login, register, reset_password, verify_email  # noqa: E402, I001
+from dashboard.api_client import forgot_password, login, register, reset_password, verify_email, verify_reset_otp  # noqa: E402, I001
 
 _COOKIE_TOKEN = "dp_session_token"
 _COOKIE_EMAIL = "dp_session_email"
 _COOKIE_TTL_DAYS = 7
+_SPECIAL_PASSWORD_CHARS = set("!@#$%^&*()_+-=[]{}|;':\",./<>?")
 
 
 def _write_session_cookies(token: str, email: str) -> None:
@@ -41,8 +42,8 @@ def _write_session_cookies(token: str, email: str) -> None:
     )
 
 
-def _delete_session_cookies() -> None:
-    """Expire session cookies immediately via a same-origin iframe script."""
+def _clear_session_cookies() -> None:
+    """Expire auth cookies via a same-origin iframe script."""
     stcomponents.html(
         f"""<script>
         var exp = "expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax";
@@ -51,6 +52,27 @@ def _delete_session_cookies() -> None:
         </script>""",
         height=0,
     )
+
+
+def _password_requirements(password: str) -> list[tuple[bool, str]]:
+    return [
+        (len(password) >= 8, "At least 8 characters"),
+        (any(c.isupper() for c in password), "One uppercase letter"),
+        (any(c.isdigit() for c in password), "One number"),
+        (any(c in _SPECIAL_PASSWORD_CHARS for c in password), "One special character (!@# ...)"),
+    ]
+
+
+def _forgot_password_started(data: dict | None) -> bool:
+    """Accept both the new API contract and the older generic success response."""
+    if not data:
+        return False
+    if data.get("otp_sent") is True:
+        return True
+    if data.get("reset_token"):
+        return True
+    message = str(data.get("message", "")).lower()
+    return "otp" in message and "sent" in message
 
 # ══════════════════════════════════════════════════════════════════════════════
 # THEME SYSTEM — "Silver Ghost" (Vercel mono: white on black / black on white)
@@ -1250,6 +1272,17 @@ hr {
   text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 7px; display: block;
 }
 
+/* Quick-question suggestion buttons — more breathing room for wrapped text */
+[data-testid="stMarkdownContainer"]:has(.dp-query-hint) ~ div .stButton > button,
+[data-testid="column"]:nth-child(2) .stButton > button {
+  padding: 10px 14px;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: center;
+  height: auto;
+  min-height: 2.8rem;
+}
+
 /* Cache/fresh badges */
 .dp-badge {
   display: inline-flex; align-items: center; gap: 7px;
@@ -1675,7 +1708,16 @@ def _show_login_page() -> None:
     _, center, _ = st.columns([1, 1.2, 1])
 
     with center:
-        if not st.session_state.get("show_reset"):
+        if st.session_state.pop("reset_success", False):
+            st.markdown(
+                '<p class="dp-form-title">Password updated!</p>'
+                '<p class="dp-form-sub">Your password has been reset. You can now sign in.</p>',
+                unsafe_allow_html=True,
+            )
+            st.success("Password updated successfully.")
+            if st.button("← Back to sign in", use_container_width=True):
+                st.rerun()
+        elif not st.session_state.get("show_reset"):
             st.markdown(
                 '<p class="dp-form-title">Welcome back</p>'
                 '<p class="dp-form-sub">Sign in to your DevPulse account</p>',
@@ -1711,12 +1753,18 @@ def _show_login_page() -> None:
                     st.rerun()
                 if submitted and email:
                     data = forgot_password(email)
-                    if data is not None:
+                    if _forgot_password_started(data):
                         st.session_state.reset_token_sent = True
                         st.session_state.reset_dev_token = data.get("reset_token")
                         st.session_state.reset_email = email
                         st.session_state.reset_message = data.get("message", "")
+                        st.session_state.otp_verified = False
+                        st.session_state.verified_otp_token = None
+                        st.session_state.pop("otp_error", None)
+                        st.session_state.pop("otp_input", None)
                         st.rerun()
+                    elif data is not None:
+                        st.error(data.get("message", "Password reset could not be started."))
 
         else:
             st.markdown(
@@ -1724,32 +1772,88 @@ def _show_login_page() -> None:
                 unsafe_allow_html=True,
             )
             st.info(st.session_state.get("reset_message", "Check your email for the OTP code."))
-            with st.form("reset_form"):
-                token = st.text_input("OTP code", value=st.session_state.get("reset_dev_token", ""))
-                new_password = st.text_input("New password", type="password")
-                confirm = st.text_input("Confirm new password", type="password")
-                c1, c2 = st.columns(2)
-                with c1:
-                    submitted = st.form_submit_button("Reset Password →", use_container_width=True)
-                with c2:
-                    cancel = st.form_submit_button("← Cancel", use_container_width=True)
+
+            otp_verified = st.session_state.get("otp_verified", False)
+
+            # ── Stage 1: OTP entry & verification ────────────────────────────
+            if not otp_verified:
+                # Clear the input field if flagged (must happen before widget is created).
+                if st.session_state.pop("clear_otp_input", False):
+                    st.session_state.pop("otp_input", None)
+                # Seed with dev token on first render or after a clear.
+                if "otp_input" not in st.session_state:
+                    st.session_state["otp_input"] = st.session_state.get("reset_dev_token") or ""
+
+                if st.session_state.get("otp_error"):
+                    st.error(st.session_state["otp_error"])
+
+                st.text_input("OTP code", key="otp_input")
+                v1, v2 = st.columns(2)
+                with v1:
+                    verify_clicked = st.button("Verify OTP →", use_container_width=True)
+                with v2:
+                    cancel = st.button("← Cancel", use_container_width=True)
+
                 if cancel:
                     st.session_state.show_reset = False
                     st.session_state.reset_token_sent = False
                     st.session_state.reset_dev_token = None
+                    st.session_state.otp_verified = False
+                    st.session_state.pop("otp_input", None)
+                    st.session_state.pop("otp_error", None)
                     st.rerun()
-                if submitted:
-                    if not token or not new_password:
-                        st.error("OTP and new password are required.")
-                    elif new_password != confirm:
-                        st.error("Passwords do not match.")
-                    elif len(new_password) < 8:
-                        st.error("Password must be at least 8 characters.")
-                    elif reset_password(token, new_password):
-                        st.success("Password updated! You can now sign in.")
-                        st.session_state.show_reset = False
-                        st.session_state.reset_token_sent = False
-                        st.session_state.reset_dev_token = None
+
+                if verify_clicked:
+                    token = st.session_state.get("otp_input", "").strip()
+                    if not token:
+                        st.session_state["otp_error"] = "Please enter the OTP code."
+                        st.rerun()
+                    else:
+                        verification = verify_reset_otp(token)
+                        if verification.get("valid"):
+                            st.session_state.otp_verified = True
+                            st.session_state.verified_otp_token = token
+                            st.session_state.pop("otp_error", None)
+                            st.rerun()
+                        st.session_state["otp_error"] = verification.get(
+                            "message",
+                            "Incorrect OTP. Please check your email and try again.",
+                        )
+                        if "incorrect otp" in st.session_state["otp_error"].lower():
+                            st.session_state["clear_otp_input"] = True
+                        st.rerun()
+            else:
+                st.success("OTP verified. Please set your new password below.")
+
+            # ── Stage 2: Password fields (only after OTP verified) ────────────
+            if otp_verified:
+                with st.form("reset_form"):
+                    new_password = st.text_input("New password", type="password")
+                    confirm = st.text_input("Confirm new password", type="password")
+                    rules = _password_requirements(new_password)
+                    all_met = all(ok for ok, _ in rules)
+                    if new_password and not all_met:
+                        unmet_rules = " • ".join(label for ok, label in rules if not ok)
+                        st.caption(f"Password requirements: {unmet_rules}")
+                    else:
+                        st.caption("Password requirements match registration.")
+                    submitted = st.form_submit_button("Reset Password →", use_container_width=True)
+                    if submitted:
+                        if not new_password:
+                            st.error("Please enter a new password.")
+                        elif new_password != confirm:
+                            st.error("Passwords do not match.")
+                        elif not all_met:
+                            st.error("Password must include at least 8 characters, one uppercase letter, one number, and one special character.")
+                        elif reset_password(st.session_state.get("verified_otp_token", ""), new_password):
+                            st.session_state.show_reset = False
+                            st.session_state.reset_token_sent = False
+                            st.session_state.reset_dev_token = None
+                            st.session_state.otp_verified = False
+                            st.session_state.verified_otp_token = None
+                            st.session_state.pop("otp_input", None)
+                            st.session_state.reset_success = True
+                            st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1761,8 +1865,6 @@ def _show_register_page() -> None:
     _, center, _ = st.columns([1, 1.2, 1])
 
     with center:
-        _special = set("!@#$%^&*()_+-=[]{}|;':\",./<>?")
-
         if not st.session_state.get("verify_token_sent"):
             st.markdown(
                 '<p class="dp-form-title">Create account</p>'
@@ -1774,12 +1876,7 @@ def _show_register_page() -> None:
             reg_password = st.text_input("Password", type="password", key="reg_password")
 
             pw = st.session_state.get("reg_password", "")
-            rules = [
-                (len(pw) >= 8,              "At least 8 characters"),
-                (any(c.isupper() for c in pw), "One uppercase letter"),
-                (any(c.isdigit() for c in pw), "One number"),
-                (any(c in _special for c in pw), "One special character (!@# …)"),
-            ]
+            rules = _password_requirements(pw)
             all_met = all(ok for ok, _ in rules)
 
             items = "".join(
@@ -1878,6 +1975,21 @@ def show_login() -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def show_dashboard() -> None:
+    # Logout is handled as a normal rerender so the app returns to the auth flow
+    # even if the browser ignores iframe parent-navigation.
+    if st.session_state.get("logging_out"):
+        _clear_session_cookies()
+        st.session_state.clear()
+        st.session_state["auth_page"] = "landing"
+        st.query_params.clear()
+        st.query_params["logged_out"] = "1"
+        st.rerun()
+
+    # Inject CSS first so elements are styled before they paint to the browser,
+    # preventing a flash of unstyled/default Streamlit components.
+    _inject()
+    theme = _t()
+
     # Strip any URL query params that may have leaked credentials in older builds.
     if st.query_params:
         st.query_params.clear()
@@ -1894,9 +2006,6 @@ def show_dashboard() -> None:
         tool_tracker,
         trends,
     )
-
-    _inject()
-    theme = _t()
 
     email = st.session_state.get("email", "")
     logo_col, spacer_col, theme_col, badge_col, logout_col = st.columns(
@@ -1936,9 +2045,7 @@ def show_dashboard() -> None:
     with logout_col:
         st.markdown('<span class="dp-dash-logout-marker"></span>', unsafe_allow_html=True)
         if st.button("Logout", key="top_logout", type="secondary", use_container_width=True):
-            _delete_session_cookies()
-            st.query_params.clear()
-            st.session_state.clear()
+            st.session_state["logging_out"] = True
             st.rerun()
 
     st.markdown(
@@ -1951,7 +2058,7 @@ def show_dashboard() -> None:
         "  Trends  ",
         "  Community  ",
         "  Tool Tracker  ",
-        "  Intelligence  ",
+        "  Ask AI  ",
     ])
 
     with tab1:
@@ -1971,15 +2078,18 @@ def show_dashboard() -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 if "token" not in st.session_state:
-    # st.context.cookies reads from the HTTP request headers — available immediately
-    # on every page load, no JS round-trip required.
-    _saved_token = unquote(st.context.cookies.get(_COOKIE_TOKEN, ""))
-    _saved_email = unquote(st.context.cookies.get(_COOKIE_EMAIL, ""))
-    if _saved_token and _saved_email:
-        st.session_state["token"] = _saved_token
-        st.session_state["email"] = _saved_email
-        show_dashboard()
-    else:
+    # logged_out param: set by logout and kept in the URL until the user
+    # successfully logs in, preventing stale cookies from restoring the session.
+    if st.query_params.get("logged_out"):
         show_login()
+    else:
+        _saved_token = unquote(st.context.cookies.get(_COOKIE_TOKEN, ""))
+        _saved_email = unquote(st.context.cookies.get(_COOKIE_EMAIL, ""))
+        if _saved_token and _saved_email:
+            st.session_state["token"] = _saved_token
+            st.session_state["email"] = _saved_email
+            show_dashboard()
+        else:
+            show_login()
 else:
     show_dashboard()

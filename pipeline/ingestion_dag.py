@@ -77,8 +77,9 @@ def _consume(**context):
     return summary
 
 
-def _run_processing(ingest_batch_id: str) -> None:
+def _run_processing(**context) -> None:
     """Run LLM processing over a batch of posts."""
+    ingest_batch_id = context["run_id"]
     try:
         from processing import llm_processor
 
@@ -99,8 +100,9 @@ def _run_processing(ingest_batch_id: str) -> None:
         raise
 
 
-def _run_embeddings(ingest_batch_id: str) -> None:
+def _run_embeddings(**context) -> None:
     """Run embedding generation over a batch of posts."""
+    ingest_batch_id = context["run_id"]
     try:
         from processing import embedder
 
@@ -155,14 +157,12 @@ consume_task = PythonOperator(
 process_task = PythonOperator(
     task_id="process_task",
     python_callable=_run_processing,
-    op_kwargs={"ingest_batch_id": None},
     dag=dag,
 )
 
 embed_task = PythonOperator(
     task_id="embed_task",
     python_callable=_run_embeddings,
-    op_kwargs={"ingest_batch_id": None},
     dag=dag,
 )
 

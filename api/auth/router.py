@@ -17,6 +17,8 @@ from api.schemas import (
     UserRegisterResponse,
     VerifyEmailRequest,
     VerifyEmailResponse,
+    VerifyOtpRequest,
+    VerifyOtpResponse,
 )
 from storage.db_client import (
     activate_user,
@@ -26,6 +28,7 @@ from storage.db_client import (
     create_verification_token,
     fetch_reset_token,
     fetch_user_by_email,
+    fetch_user_by_id,
     fetch_verification_token,
     insert_user,
     update_user_password,
@@ -101,14 +104,14 @@ async def login(body: TokenRequest, request: Request):
 async def forgot_password(body: ForgotPasswordRequest):
     """
     Request a password reset token.
-    Always returns 200 to avoid revealing whether the email exists.
+    Always returns 200.
     When SMTP is not configured (dev mode), returns the token directly in the response.
     """
     user = fetch_user_by_email(body.email)
     if user and user["is_active"]:
         otp = "".join(str(secrets.randbelow(10)) for _ in range(6))
         token_hash = hashlib.sha256(otp.encode()).hexdigest()
-        expires_at = datetime.now(UTC) + timedelta(minutes=5)
+        expires_at = datetime.now(UTC) + timedelta(minutes=15)
         create_reset_token(user["id"], token_hash, expires_at)
 
         sent = send_reset_email(body.email, otp)
@@ -116,12 +119,28 @@ async def forgot_password(body: ForgotPasswordRequest):
             # Dev mode: no SMTP configured — return OTP in response
             return ForgotPasswordResponse(
                 message="SMTP not configured. Use the OTP below to reset your password.",
+                otp_sent=True,
                 reset_token=otp,
             )
+        return ForgotPasswordResponse(
+            message="A one-time password (OTP) has been sent to your email.",
+            otp_sent=True,
+        )
 
     return ForgotPasswordResponse(
-        message="If that email is registered, a one-time password (OTP) has been sent."
+        message="No active account was found for that email address.",
+        otp_sent=False,
     )
+
+
+@router.post("/verify-otp", response_model=VerifyOtpResponse)
+async def verify_otp(body: VerifyOtpRequest):
+    """Check whether a reset OTP is valid without consuming it."""
+    token_hash = hashlib.sha256(body.token.encode()).hexdigest()
+    record = fetch_reset_token(token_hash)
+    if not record:
+        return VerifyOtpResponse(valid=False, message="Invalid or expired OTP.")
+    return VerifyOtpResponse(valid=True, message="OTP verified.")
 
 
 @router.post("/reset-password", response_model=ResetPasswordResponse)
@@ -133,6 +152,12 @@ async def reset_password(body: ResetPasswordRequest):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset token.",
+        )
+    user = fetch_user_by_id(record["user_id"])
+    if user and verify_password(body.new_password, user["hashed_password"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password cannot be the same as the current password.",
         )
     hashed = hash_password(body.new_password)
     update_user_password(record["user_id"], hashed)

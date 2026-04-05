@@ -33,7 +33,7 @@ def send_reset_email(to_email: str, token: str) -> bool:
         f"We received a request to reset the password for your DevPulse account.\n\n"
         f"Your one-time password (OTP) is:\n\n"
         f"  {token}\n\n"
-        f"This OTP expires in 5 minutes. Enter it on the Reset Password screen to set a new password.\n\n"
+        f"This OTP expires in 15 minutes. Enter it on the Reset Password screen to set a new password.\n\n"
         f"If you didn't request this, no action is needed — your account is safe.\n\n"
         f"Thanks,\n"
         f"The DevPulse Team"
@@ -90,7 +90,7 @@ def send_reset_email(to_email: str, token: str) -> bool:
                 </table>
 
                 <p style="margin:24px 0 0;font-size:13px;color:#718096;line-height:1.6;">
-                  ⏱ This OTP expires in <strong>5 minutes</strong>.<br>
+                  ⏱ This OTP expires in <strong>15 minutes</strong>.<br>
                   Enter it on the Reset Password screen to set a new password.
                 </p>
               </td>
