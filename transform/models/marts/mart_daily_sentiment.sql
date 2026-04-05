@@ -1,6 +1,23 @@
+{{
+    config(
+        materialized='incremental',
+        unique_key='post_date || \'_\' || topic || \'_\' || tool_mentioned || \'_\' || source',
+        on_schema_change='sync_all_columns'
+    )
+}}
+
 with enriched as (
     select * from {{ ref('int_posts_enriched') }}
     where is_classified = true
+    {% if is_incremental() %}
+        -- Only process posts from dates not yet in this mart
+        -- On first run (full refresh): processes all data
+        -- On subsequent runs: only processes new dates
+        and post_date > (
+            select coalesce(max(post_date), '1970-01-01'::date)
+            from {{ this }}
+        )
+    {% endif %}
 ),
 
 daily as (

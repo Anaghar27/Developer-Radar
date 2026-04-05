@@ -23,4 +23,8 @@ models:
     intermediate:
       +materialized: view
     marts:
-      +materialized: table
+      # Incremental materialization — only processes new dates on each run.
+      # Use 'dbt run --full-refresh' to rebuild complete history.
+      # mart_trending_topics uses 8-day lookback for rolling average accuracy.
+      +materialized: incremental
+      +on_schema_change: sync_all_columns

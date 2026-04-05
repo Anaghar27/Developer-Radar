@@ -15,8 +15,8 @@ build/
 # dbt
 transform/target/
 transform/dbt_packages/
-transform/devpulse.duckdb
-transform/devpulse.duckdb.wal
+**/*.duckdb
+**/*.duckdb.wal
 transform/logs/
 logs/
 

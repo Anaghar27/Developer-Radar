@@ -1,7 +1,21 @@
+{{
+    config(
+        materialized='incremental',
+        unique_key='post_date || \'_\' || tool || \'_\' || source',
+        on_schema_change='sync_all_columns'
+    )
+}}
+
 with enriched as (
     select * from {{ ref('int_posts_enriched') }}
     where is_classified = true
     and tool_mentioned != 'none'
+    {% if is_incremental() %}
+        and post_date > (
+            select coalesce(max(post_date), '1970-01-01'::date)
+            from {{ this }}
+        )
+    {% endif %}
 ),
 
 tool_daily as (

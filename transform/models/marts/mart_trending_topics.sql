@@ -1,5 +1,21 @@
+{{
+    config(
+        materialized='incremental',
+        unique_key='post_date || \'_\' || topic',
+        on_schema_change='sync_all_columns'
+    )
+}}
+
 with enriched as (
     select * from {{ ref('int_posts_enriched') }}
+    {% if is_incremental() %}
+        -- Process last 8 days to ensure rolling avg recalculates correctly
+        -- (7-day window needs 7 prior days + today)
+        where post_date >= (
+            select coalesce(max(post_date), '1970-01-01'::date) - interval '8 days'
+            from {{ this }}
+        )
+    {% endif %}
 ),
 
 daily_counts as (

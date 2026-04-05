@@ -68,10 +68,27 @@ wait_for_ingestion = ExternalTaskSensor(
 
 
 def _run_dbt(**context):
-    """Run all dbt models."""
+    """
+    Run dbt models.
+    Uses --full-refresh on the first run of each day (00:00 UTC)
+    to ensure any late-arriving data from previous day is captured.
+    On all other runs (06:00, 12:00, 18:00 UTC), uses incremental mode.
+    """
     dbt_dir = os.getenv("DBT_PROJECT_DIR", os.path.join(os.path.dirname(__file__), "..", "transform"))
+
+    # Full refresh on midnight run — captures any late data from previous day
+    execution_hour = context["data_interval_start"].hour
+    is_midnight_run = execution_hour == 0
+
+    cmd = ["dbt", "run", "--profiles-dir", ".", "--no-use-colors"]
+    if is_midnight_run:
+        cmd.append("--full-refresh")
+        logging.info("Midnight run — using --full-refresh to capture late-arriving data")
+    else:
+        logging.info(f"Hour {execution_hour} run — using incremental mode")
+
     result = subprocess.run(
-        ["dbt", "run", "--profiles-dir", ".", "--no-use-colors"],
+        cmd,
         cwd=dbt_dir,
         capture_output=True,
         text=True,
