@@ -350,10 +350,11 @@ def test_pagination_next_offset_is_correct(client, auth_token):
     client.app.state.db_pool.fetchrow.return_value = (100,)
     client.app.state.db_pool.fetch.return_value = []
 
-    response = client.get(
-        "/posts?limit=20&offset=10",
-        headers={"Authorization": f"Bearer {auth_token}"},
-    )
+    with patch("api.routes.posts.duckdb_available", return_value=True):
+        response = client.get(
+            "/posts?limit=20&offset=10",
+            headers={"Authorization": f"Bearer {auth_token}"},
+        )
 
     assert response.status_code == 200
     data = response.json()
