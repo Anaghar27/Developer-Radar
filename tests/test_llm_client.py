@@ -148,7 +148,7 @@ def test_call_llm_openrouter_uses_default_model_when_none():
     """
     _call_openrouter uses OPENROUTER_MODELS[0] when no model specified.
     """
-    from processing.llm_client import _call_openrouter, OPENROUTER_MODELS
+    from processing.llm_client import OPENROUTER_MODELS, _call_openrouter
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200

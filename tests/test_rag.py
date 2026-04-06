@@ -299,7 +299,7 @@ def test_corrective_rag_retries_when_relevance_low():
     run_corrective_rag() retries with wider search when avg relevance < threshold.
     On retry, retrieve is called with WIDE_LIMIT instead of INITIAL_LIMIT.
     """
-    from rag.corrective_rag import run_corrective_rag, RELEVANCE_THRESHOLD, WIDE_LIMIT
+    from rag.corrective_rag import RELEVANCE_THRESHOLD, WIDE_LIMIT, run_corrective_rag
 
     retrieve_call_count = {"n": 0}
 
@@ -330,7 +330,7 @@ def test_corrective_rag_no_retry_when_relevance_high():
     run_corrective_rag() does NOT retry when avg relevance >= threshold.
     retrieve should be called exactly once.
     """
-    from rag.corrective_rag import run_corrective_rag, RELEVANCE_THRESHOLD
+    from rag.corrective_rag import RELEVANCE_THRESHOLD, run_corrective_rag
 
     retrieve_call_count = {"n": 0}
 
