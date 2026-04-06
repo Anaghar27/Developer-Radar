@@ -58,7 +58,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install uv
-          uv pip install dbt-core==1.8.1 dbt-duckdb --system
+          uv pip install dbt-core==1.8.1 dbt-duckdb==1.8.4 --system
 
       - name: Enable pgvector extension
         run: psql -h localhost -U postgres -d developer_intelligence -c "CREATE EXTENSION IF NOT EXISTS vector;"
