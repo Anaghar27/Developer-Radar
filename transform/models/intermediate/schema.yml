@@ -1,0 +1,74 @@
+version: 2
+
+models:
+  - name: int_posts_enriched
+    description: "Joined model combining raw post metadata with LLM classification output. Left join ensures all raw posts are retained even if not yet classified."
+    columns:
+      - name: post_id
+        description: "Unique post identifier"
+
+      - name: source
+        description: "Post source platform — reddit or hackernews"
+
+      - name: title
+        description: "Post title"
+
+      - name: body
+        description: "Post body text"
+
+      - name: url
+        description: "Original post URL"
+
+      - name: score
+        description: "Post score / upvotes at time of ingestion"
+
+      - name: post_date
+        description: "Date of post truncated to day"
+
+      - name: created_at_utc
+        description: "UTC timestamp when the post was created on the source platform"
+
+      - name: ingested_at
+        description: "Timestamp when the post was ingested into the pipeline"
+
+      - name: body_length
+        description: "Character length of post body"
+
+      - name: is_reddit
+        description: "True if source is reddit"
+
+      - name: ingest_batch_id
+        description: "Batch identifier for the ingestion run that captured this post"
+
+      - name: sentiment
+        description: "LLM-classified sentiment — positive, negative, or neutral. Null if not yet classified."
+
+      - name: emotion
+        description: "LLM-classified dominant emotion — excited, frustrated, skeptical, curious, hopeful, or neutral"
+
+      - name: topic
+        description: "LLM-classified topic — LLM, Agents, RAG, MLOps, Python, WebDev, DevTools, Cloud, Hardware, Security, Career, OpenSource, or Other"
+
+      - name: tool_mentioned
+        description: "Developer tool mentioned in the post — 'none' if absent"
+
+      - name: controversy_score
+        description: "LLM-assigned controversy score between 0 and 1"
+
+      - name: reasoning
+        description: "LLM reasoning for the classification"
+
+      - name: processed_at
+        description: "Timestamp when the LLM classification was completed"
+
+      - name: sentiment_score
+        description: "Numeric encoding of sentiment — 1 for positive, -1 for negative, 0 for neutral"
+
+      - name: is_classified
+        description: "True if the post has been through LLM classification"
+
+      - name: total_content_length
+        description: "Combined character length of title and body"
+
+      - name: days_ago
+        description: "Number of days between post_date and today"

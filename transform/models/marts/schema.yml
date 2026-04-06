@@ -1,0 +1,125 @@
+version: 2
+
+models:
+  - name: mart_daily_sentiment
+    description: "Daily aggregated sentiment metrics per topic, tool, and source. Incremental — only new dates are processed on each run."
+    columns:
+      - name: post_date
+        description: "Date of aggregation"
+
+      - name: topic
+        description: "Developer topic — LLM, Agents, RAG, MLOps, etc."
+
+      - name: tool_mentioned
+        description: "Developer tool mentioned — 'none' if no specific tool"
+
+      - name: source
+        description: "Source platform — reddit or hackernews"
+
+      - name: post_count
+        description: "Number of classified posts for this date / topic / tool / source combination"
+
+      - name: avg_sentiment
+        description: "Average sentiment score (positive=1, neutral=0, negative=-1) rounded to 4 decimal places"
+
+      - name: positive_count
+        description: "Number of posts classified as positive sentiment"
+
+      - name: negative_count
+        description: "Number of posts classified as negative sentiment"
+
+      - name: neutral_count
+        description: "Number of posts classified as neutral sentiment"
+
+      - name: dominant_emotion
+        description: "Most frequently occurring emotion across posts in this group"
+
+      - name: avg_controversy
+        description: "Average controversy score (0–1) rounded to 4 decimal places"
+
+      - name: updated_at
+        description: "Timestamp when this row was last written"
+
+  - name: mart_tool_comparison
+    description: "Daily sentiment and volume metrics per developer tool and source platform. Only includes posts where a specific tool was mentioned (excludes 'none')."
+    columns:
+      - name: post_date
+        description: "Date of aggregation"
+
+      - name: tool
+        description: "Developer tool mentioned in the post"
+
+      - name: source
+        description: "Source platform — reddit or hackernews"
+
+      - name: post_count
+        description: "Number of posts mentioning this tool on this date"
+
+      - name: avg_sentiment
+        description: "Average sentiment score for this tool / date / source"
+
+      - name: avg_controversy
+        description: "Average controversy score for this tool / date / source"
+
+      - name: positive_count
+        description: "Number of positive sentiment posts"
+
+      - name: negative_count
+        description: "Number of negative sentiment posts"
+
+      - name: neutral_count
+        description: "Number of neutral sentiment posts"
+
+      - name: updated_at
+        description: "Timestamp when this row was last written"
+
+  - name: mart_community_divergence
+    description: "Daily sentiment divergence between Reddit and Hacker News per topic. Measures how differently the two communities feel about the same developer topics."
+    columns:
+      - name: post_date
+        description: "Date of aggregation"
+
+      - name: topic
+        description: "Developer topic being compared across communities"
+
+      - name: reddit_sentiment
+        description: "Average sentiment score for Reddit posts on this topic / date"
+
+      - name: hn_sentiment
+        description: "Average sentiment score for Hacker News posts on this topic / date"
+
+      - name: reddit_count
+        description: "Number of Reddit posts for this topic / date"
+
+      - name: hn_count
+        description: "Number of Hacker News posts for this topic / date"
+
+      - name: sentiment_delta
+        description: "Reddit sentiment minus HN sentiment — positive means Reddit is more positive than HN on this topic"
+
+      - name: updated_at
+        description: "Timestamp when this row was last written"
+
+  - name: mart_trending_topics
+    description: "Daily topic volume with 7-day rolling average and spike detection. Uses an 8-day lookback window on incremental runs to ensure rolling averages recalculate correctly."
+    columns:
+      - name: post_date
+        description: "Date of aggregation"
+
+      - name: topic
+        description: "Developer topic"
+
+      - name: today_count
+        description: "Number of posts for this topic on this date"
+
+      - name: rolling_avg_7d
+        description: "7-day rolling average post count (excluding today) — 0 if fewer than 7 prior days exist"
+
+      - name: pct_change
+        description: "Percentage change of today_count vs rolling_avg_7d — 0 if rolling average is 0"
+
+      - name: spike_flag
+        description: "True if today_count exceeds rolling_avg_7d by more than 30% — signals an unusual surge in discussion"
+
+      - name: updated_at
+        description: "Timestamp when this row was last written"
