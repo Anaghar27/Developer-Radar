@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from api.auth.dependencies import get_current_user
 from api.cache.redis_client import cache_get, cache_set, make_cache_key
 from api.schemas import ToolComparisonResponse, ToolsListResponse
+from api.utils import duckdb_available
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -31,6 +32,10 @@ async def compare_tools(
     cached = await cache_get(redis, cache_key)
     if cached:
         return ToolsListResponse(**cached)
+
+    if not duckdb_available():
+        logger.warning("DuckDB not available — returning empty response")
+        return ToolsListResponse(data=[], tools=[])
 
     try:
         conn = duckdb.connect(DUCKDB_PATH, read_only=True)

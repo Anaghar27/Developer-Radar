@@ -1502,7 +1502,7 @@ def _nav_bar(active_page: str) -> None:
         )
         with back_col:
             st.markdown('<span class="dp-nav-back-marker"></span>', unsafe_allow_html=True)
-            if st.button("← Back", key="nav_home", type="tertiary"):
+            if st.button("← Home", key="nav_home", type="tertiary"):
                 st.session_state.auth_page = "landing"
                 st.rerun()
     else:

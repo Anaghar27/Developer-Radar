@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from api.auth.dependencies import get_current_user
 from api.cache.redis_client import cache_get, cache_set, make_cache_key
 from api.schemas import DailySentimentResponse, TrendsListResponse
+from api.utils import duckdb_available
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -33,6 +34,10 @@ async def get_trends(
     cached = await cache_get(redis, cache_key)
     if cached:
         return TrendsListResponse(**cached)
+
+    if not duckdb_available():
+        logger.warning("DuckDB not available — returning empty response")
+        return TrendsListResponse(data=[], total=0)
 
     try:
         conn = duckdb.connect(DUCKDB_PATH, read_only=True)

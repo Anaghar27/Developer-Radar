@@ -20,15 +20,11 @@ from api.routes.query import router as query_router
 from api.routes.tools import router as tools_router
 from api.routes.trends import router as trends_router
 
+from api.utils import duckdb_available
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
-
-
-def duckdb_available() -> bool:
-    """Return True if the DuckDB mart file exists and is readable."""
-    path = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
-    return os.path.isfile(path)
 
 limiter = Limiter(key_func=get_remote_address)
 
