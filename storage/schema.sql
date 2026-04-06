@@ -41,6 +41,11 @@ CREATE TABLE IF NOT EXISTS insight_reports (
     id SERIAL PRIMARY KEY,
     query TEXT UNIQUE,
     report_text TEXT,
+    -- NOTE: sources_used is a PostgreSQL array — denormalized from strict 1NF.
+    -- The normalized form would be a child table (insight_report_sources).
+    -- Array chosen deliberately: sources are always fetched together with
+    -- the report (no standalone source queries exist), so a child table
+    -- adds join complexity with zero query benefit.
     sources_used TEXT[],
     generated_at TIMESTAMP DEFAULT NOW()
 );
@@ -80,6 +85,12 @@ CREATE TABLE IF NOT EXISTS alerts (
     topic        VARCHAR(100) NOT NULL,
     today_count  INTEGER NOT NULL,
     rolling_avg  NUMERIC(10,2) NOT NULL,
+    -- NOTE: pct_increase is a denormalized derived field:
+    --   pct_increase = ((today_count - rolling_avg) / rolling_avg) * 100
+    -- Stored explicitly (violates strict 3NF) for two reasons:
+    --   1. Query performance — avoids recalculation on every read
+    --   2. Historical accuracy — rolling_avg changes over time;
+    --      snapshot at trigger time is the meaningful value
     pct_increase NUMERIC(10,2) NOT NULL,
     triggered_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -95,10 +106,19 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     dag_id           VARCHAR(100) NOT NULL,
     start_time       TIMESTAMPTZ NOT NULL,
     end_time         TIMESTAMPTZ,
+    -- NOTE: duration_seconds is a denormalized derived field:
+    --   duration_seconds = EXTRACT(EPOCH FROM (end_time - start_time))
+    -- Stored explicitly (violates strict 3NF) for Prometheus scraping —
+    -- the metrics exporter reads this directly without timestamp arithmetic.
     duration_seconds NUMERIC(10,2),
     posts_ingested   INTEGER NOT NULL DEFAULT 0,
     posts_classified INTEGER NOT NULL DEFAULT 0,
     posts_failed     INTEGER NOT NULL DEFAULT 0,
+    -- NOTE: error_rate is a denormalized derived field:
+    --   error_rate = posts_failed / NULLIF(posts_ingested, 0)
+    -- Stored explicitly (violates strict 3NF) for Prometheus scraping —
+    -- devpulse_classification_error_rate gauge reads this directly.
+    -- Alerts fire when error_rate > 0.10 (10%).
     error_rate       NUMERIC(5,4) NOT NULL DEFAULT 0.0,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
