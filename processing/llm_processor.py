@@ -57,6 +57,16 @@ def _parse_response(raw: str) -> dict | None:
             logger.warning("controversy_score is not an int: %s", raw)
             return None
 
+    valid_sentiments = {"positive", "negative", "neutral"}
+    if parsed.get("sentiment") not in valid_sentiments:
+        logger.warning("Invalid sentiment value: %s", parsed.get("sentiment"))
+        return None
+
+    score = parsed.get("controversy_score")
+    if isinstance(score, (int, float)) and not (0 <= score <= 10):
+        logger.warning("controversy_score out of range [0, 10]: %s", score)
+        return None
+
     return parsed
 
 
@@ -79,6 +89,9 @@ def classify_post(post: dict, post_id: str, openai_fallback: Event) -> dict | No
     - If the event is already set → go directly to gpt-4o-mini
     """
     try:
+        if not (post.get("title") or "").strip():
+            return None
+
         prompt = format_prompt(post.get("title", ""), post.get("body", ""))
 
         # --- Try OpenRouter (if not already switched) ---

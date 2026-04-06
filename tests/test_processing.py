@@ -182,3 +182,114 @@ def test_embed_post_returns_list():
          patch("processing.embedder.insert_embedding"):
         result = embed_post(post_id="p1", title="hello", body="world")
     assert isinstance(result, list)
+
+
+# ---------------------------------------------------------------------------
+# _parse_response edge cases
+# ---------------------------------------------------------------------------
+
+def test_parse_response_invalid_json():
+    """_parse_response returns None for completely invalid JSON. Must not raise."""
+    result = _parse_response("this is not json at all")
+    assert result is None
+
+
+def test_parse_response_empty_string():
+    """_parse_response handles empty string gracefully."""
+    result = _parse_response("")
+    assert result is None
+
+
+def test_parse_response_missing_sentiment_key():
+    """_parse_response returns None when required 'sentiment' key is missing."""
+    response = json.dumps({
+        "emotion": "excitement",
+        "topic": "Python",
+        "tool_mentioned": "pytorch",
+        "controversy_score": 1,
+        "reasoning": "Missing sentiment key.",
+    })
+    result = _parse_response(response)
+    assert result is None
+
+
+def test_parse_response_invalid_sentiment_value():
+    """_parse_response returns None for invalid sentiment enum value."""
+    response = json.dumps({
+        "sentiment": "very_positive",
+        "emotion": "excitement",
+        "topic": "Python",
+        "tool_mentioned": "pytorch",
+        "controversy_score": 1,
+        "reasoning": "Invalid sentiment enum.",
+    })
+    result = _parse_response(response)
+    if result is not None:
+        assert result["sentiment"] in ("positive", "negative", "neutral")
+
+
+def test_parse_response_controversy_score_out_of_range():
+    """_parse_response clamps or rejects controversy_score outside [0, 10]."""
+    response = json.dumps({
+        "sentiment": "positive",
+        "emotion": "excitement",
+        "topic": "Python",
+        "tool_mentioned": "pytorch",
+        "controversy_score": 15,
+        "reasoning": "Score out of range.",
+    })
+    result = _parse_response(response)
+    if result is not None:
+        assert 0 <= result["controversy_score"] <= 10
+
+
+def test_parse_response_nested_json_in_markdown():
+    """_parse_response handles JSON wrapped in markdown code fences."""
+    response = """```json
+{
+    "sentiment": "positive",
+    "emotion": "excitement",
+    "topic": "Python",
+    "tool_mentioned": "pytorch",
+    "controversy_score": 2,
+    "reasoning": "Positive and excited about ML tooling."
+}
+```"""
+    result = _parse_response(response)
+    assert result is not None
+    assert result["sentiment"] == "positive"
+
+
+# ---------------------------------------------------------------------------
+# classify_post edge cases
+# ---------------------------------------------------------------------------
+
+def test_classify_post_returns_none_for_empty_title():
+    """classify_post returns None when title is empty without calling the LLM."""
+    result = classify_post(
+        post={"title": "", "body": "Some body text"},
+        post_id="test_001",
+        openai_fallback=Event(),
+    )
+    assert result is None
+
+
+def test_classify_post_handles_none_body():
+    """classify_post handles None body without crashing."""
+    mock_response = json.dumps({
+        "sentiment": "neutral",
+        "emotion": "curious",
+        "topic": "Other",
+        "tool_mentioned": None,
+        "controversy_score": 0,
+        "reasoning": "Post has no body.",
+    })
+
+    with patch("processing.llm_processor.call_llm", return_value=mock_response):
+        result = classify_post(
+            post={"title": "Interesting post title here", "body": None},
+            post_id="test_002",
+            openai_fallback=Event(),
+        )
+    assert result is not None
+    assert result["sentiment"] == "neutral"

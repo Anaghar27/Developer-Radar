@@ -290,3 +290,119 @@ def test_corrective_rag_uses_query_expansion():
     assert len(call_kwargs["expanded_queries"]) == 4
     assert "query_variants" in result
     assert result["query_variants"] == 4
+
+
+# ── corrective_rag retry logic ────────────────────────────────────────────────
+
+def test_corrective_rag_retries_when_relevance_low():
+    """
+    run_corrective_rag() retries with wider search when avg relevance < threshold.
+    On retry, retrieve is called with WIDE_LIMIT instead of INITIAL_LIMIT.
+    """
+    from rag.corrective_rag import run_corrective_rag, RELEVANCE_THRESHOLD, WIDE_LIMIT
+
+    retrieve_call_count = {"n": 0}
+
+    def mock_retrieve(query, limit, expanded_queries=None):
+        retrieve_call_count["n"] += 1
+        return list(SAMPLE_POSTS)
+
+    # First grading returns low score → triggers retry; second is high → proceeds
+    grade_results = [
+        (RELEVANCE_THRESHOLD - 0.1, list(SAMPLE_POSTS)),
+        (RELEVANCE_THRESHOLD + 0.1, list(SAMPLE_POSTS)),
+    ]
+
+    with patch("rag.corrective_rag.expand_query", return_value=["query"]), \
+         patch("rag.corrective_rag.retrieve", side_effect=mock_retrieve), \
+         patch("rag.corrective_rag.grade_relevance", side_effect=grade_results), \
+         patch("rag.corrective_rag.rerank", return_value=list(SAMPLE_POSTS)), \
+         patch("rag.corrective_rag.generate_insight", return_value="Report"):
+
+        run_corrective_rag("test query")
+
+    assert retrieve_call_count["n"] == 2, \
+        f"Expected 2 retrieve calls (initial + retry), got {retrieve_call_count['n']}"
+
+
+def test_corrective_rag_no_retry_when_relevance_high():
+    """
+    run_corrective_rag() does NOT retry when avg relevance >= threshold.
+    retrieve should be called exactly once.
+    """
+    from rag.corrective_rag import run_corrective_rag, RELEVANCE_THRESHOLD
+
+    retrieve_call_count = {"n": 0}
+
+    def mock_retrieve(query, limit, expanded_queries=None):
+        retrieve_call_count["n"] += 1
+        return list(SAMPLE_POSTS)
+
+    with patch("rag.corrective_rag.expand_query", return_value=["query"]), \
+         patch("rag.corrective_rag.retrieve", side_effect=mock_retrieve), \
+         patch("rag.corrective_rag.grade_relevance",
+               return_value=(RELEVANCE_THRESHOLD + 0.1, list(SAMPLE_POSTS))), \
+         patch("rag.corrective_rag.rerank", return_value=list(SAMPLE_POSTS)), \
+         patch("rag.corrective_rag.generate_insight", return_value="Report"):
+
+        run_corrective_rag("test query")
+
+    assert retrieve_call_count["n"] == 1, \
+        f"Expected 1 retrieve call, got {retrieve_call_count['n']}"
+
+
+def test_corrective_rag_empty_posts_returns_gracefully():
+    """
+    run_corrective_rag() handles empty retrieval without crashing.
+    Returns a report even when no posts are found.
+    """
+    from rag.corrective_rag import run_corrective_rag
+
+    with patch("rag.corrective_rag.expand_query", return_value=["query"]), \
+         patch("rag.corrective_rag.retrieve", return_value=[]), \
+         patch("rag.corrective_rag.grade_relevance", return_value=(0.0, [])), \
+         patch("rag.corrective_rag.rerank", return_value=[]), \
+         patch("rag.corrective_rag.generate_insight",
+               return_value="No relevant posts found."):
+
+        result = run_corrective_rag("obscure query with no results")
+
+    assert "report" in result
+    assert "sources_used" in result
+    assert result["report"] == "No relevant posts found."
+
+
+# ── hybrid_retriever deduplication ───────────────────────────────────────────
+
+def test_hybrid_retriever_deduplicates_across_query_variants():
+    """
+    retrieve() with expanded_queries deduplicates posts appearing
+    in multiple query variant results.
+    """
+    from rag.hybrid_retriever import retrieve
+
+    post = {
+        "post_id": "duplicate_post",
+        "title": "Same post appears in all queries",
+        "body": "body text",
+        "source": "reddit",
+        "url": "http://example.com",
+        "sentiment": "positive",
+        "topic": "machine_learning",
+        "tool_mentioned": "pytorch",
+        "controversy_score": 0.1,
+        "similarity_score": 0.9,
+    }
+
+    # Same post returned by both searches for all 3 query variants
+    with patch("rag.hybrid_retriever.semantic_search", return_value=[post]), \
+         patch("rag.hybrid_retriever.keyword_search", return_value=[post]):
+        results = retrieve(
+            "pytorch",
+            limit=10,
+            expanded_queries=["pytorch", "torch", "pytorch framework"],
+        )
+
+    post_ids = [r["post_id"] for r in results]
+    assert post_ids.count("duplicate_post") == 1, \
+        "Duplicate post should appear only once after deduplication"

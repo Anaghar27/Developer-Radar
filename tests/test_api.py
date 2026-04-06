@@ -310,3 +310,93 @@ def test_reset_password_rejects_current_password(client):
     assert "same as the current password" in response.json()["detail"].lower()
     mock_update.assert_not_called()
     mock_consume.assert_not_called()
+
+
+# ── Cache invalidation ────────────────────────────────────────────────────────
+
+def test_cache_invalidation_with_valid_api_key(client):
+    """Cache invalidation succeeds with correct internal API key."""
+    with patch("api.auth.dependencies.INTERNAL_API_KEY", "test-internal-key"), \
+         patch("api.routes.cache.cache_invalidate_all",
+               new_callable=AsyncMock, return_value=5):
+        response = client.post(
+            "/cache/invalidate",
+            headers={"X-API-Key": "test-internal-key"},
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["keys_deleted"] == 5
+
+
+def test_cache_invalidation_wrong_key(client):
+    """Cache invalidation fails with wrong API key."""
+    with patch("api.auth.dependencies.INTERNAL_API_KEY", "correct-key"):
+        response = client.post(
+            "/cache/invalidate",
+            headers={"X-API-Key": "wrong-key"},
+        )
+    assert response.status_code == 403
+
+
+# ── Pagination ────────────────────────────────────────────────────────────────
+
+def test_pagination_next_offset_is_correct(client, auth_token):
+    """
+    next_offset = offset + limit when has_more is True.
+    Verifies pagination math is correct.
+    """
+    # total=100, offset=10, limit=20 → has_more=True, next_offset=30
+    client.app.state.db_pool.fetchrow.return_value = (100,)
+    client.app.state.db_pool.fetch.return_value = []
+
+    response = client.get(
+        "/posts?limit=20&offset=10",
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["offset"] == 10
+    assert data["limit"] == 20
+    assert data["has_more"] is True
+    assert data["next_offset"] == 30  # offset + limit
+
+
+def test_pagination_no_more_pages(client, auth_token):
+    """
+    has_more is False and next_offset is None on last page.
+    """
+    # total=25, offset=20, limit=10 → (20+10)=30 >= 25 → last page
+    client.app.state.db_pool.fetchrow.return_value = (25,)
+    client.app.state.db_pool.fetch.return_value = []
+
+    response = client.get(
+        "/posts?limit=10&offset=20",
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["has_more"] is False
+    assert data["next_offset"] is None
+
+
+# ── Posts filters ─────────────────────────────────────────────────────────────
+
+def test_posts_source_filter(client, auth_token):
+    """Source filter is accepted without errors."""
+    response = client.get(
+        "/posts?source=reddit",
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+    assert response.status_code == 200
+
+
+# ── Health (no auth) ──────────────────────────────────────────────────────────
+
+def test_health_endpoint_no_auth_required(client):
+    """Health endpoint is publicly accessible — no auth needed."""
+    with patch("api.routes.health.fetch_latest_pipeline_run", return_value=None):
+        response = client.get("/health")
+    assert response.status_code == 200
