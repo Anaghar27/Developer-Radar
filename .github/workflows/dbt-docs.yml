@@ -1,0 +1,98 @@
+name: Deploy dbt Docs
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "transform/**"
+      - ".github/workflows/dbt-docs.yml"
+
+# Allow GitHub Pages deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one deployment at a time
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build dbt Docs + Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: developer_intelligence
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      DBT_DUCKDB_PATH: transform/devpulse.duckdb
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: developer_intelligence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install uv
+          uv pip install dbt-core==1.8.1 dbt-duckdb --system
+
+      - name: Enable pgvector extension
+        run: psql -h localhost -U postgres -d developer_intelligence -c "CREATE EXTENSION IF NOT EXISTS vector;"
+        env:
+          PGPASSWORD: postgres
+
+      - name: Apply database schema
+        run: |
+          psql -h localhost -U postgres -d developer_intelligence \
+            -f storage/schema.sql
+        env:
+          PGPASSWORD: postgres
+
+      - name: Generate dbt docs
+        run: |
+          cd transform
+          dbt docs generate --profiles-dir .
+
+      - name: Prepare GitHub Pages artifact
+        run: |
+          mkdir -p ./pages
+          cp transform/target/index.html ./pages/
+          cp transform/target/catalog.json ./pages/
+          cp transform/target/manifest.json ./pages/
+          cp transform/target/run_results.json ./pages/ 2>/dev/null || true
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./pages
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

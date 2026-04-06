@@ -36,3 +36,14 @@ All 4 mart models use incremental materialization:
 
 **First run:** Use `dbt run --full-refresh` to build complete history.
 **Subsequent runs:** `dbt run` processes only new data automatically.
+
+## Live Documentation
+dbt docs are automatically deployed to GitHub Pages on every push to main.
+
+**Live docs:** https://anaghar27.github.io/Devpulse-Platform/
+
+The docs include:
+- Full lineage graph (source → staging → intermediate → marts)
+- Column-level descriptions for all 7 models
+- Test results and coverage
+- Source freshness checks
