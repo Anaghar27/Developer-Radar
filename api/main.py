@@ -19,7 +19,6 @@ from api.routes.posts import router as posts_router
 from api.routes.query import router as query_router
 from api.routes.tools import router as tools_router
 from api.routes.trends import router as trends_router
-
 from api.utils import duckdb_available
 
 load_dotenv()
