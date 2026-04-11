@@ -13,9 +13,8 @@ import json
 import logging
 import threading
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +33,9 @@ class LLMCall:
     output_tokens: int = 0
     latency_ms: float = 0.0
     success: bool = True
-    error_reason: Optional[str] = None
+    error_reason: str | None = None
     cost_usd: float = 0.0
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     post_id: str | None = None
 
 

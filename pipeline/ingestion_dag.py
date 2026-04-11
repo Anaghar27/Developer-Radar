@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 try:
     from airflow import DAG
@@ -52,7 +52,7 @@ def _produce(**context) -> int:
 
     batch_id = context["run_id"]
     ti = context.get("ti")
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
     insert_pipeline_run(
         run_id=batch_id,
         dag_id="ingestion_pipeline",
@@ -143,7 +143,7 @@ def _write_pipeline_run(**context):
 
     run_id = context["run_id"]
     ti = context["ti"]
-    end_time = datetime.now(timezone.utc)
+    end_time = datetime.now(UTC)
     consume_summary = ti.xcom_pull(task_ids="consume_task", key="consume_summary") or {}
     posts_classified = ti.xcom_pull(task_ids="process_task", key="posts_classified") or 0
 

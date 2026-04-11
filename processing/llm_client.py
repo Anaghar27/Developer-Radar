@@ -19,10 +19,10 @@ import logging
 import os
 import threading
 import time
-from typing import Optional
 
 import requests
 from dotenv import load_dotenv
+
 from rag.llm_tracker import LLMCall, estimate_cost, estimate_tokens, record_call
 
 load_dotenv()
