@@ -22,8 +22,8 @@ This is the core flow implemented in the repository.
 
 The ingestion layer pulls raw developer discussions from:
 
-- Reddit via `praw` in [`ingestion/reddit_producer.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/ingestion/reddit_producer.py)
-- Hacker News via the Firebase API in [`ingestion/hackernews_producer.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/ingestion/hackernews_producer.py)
+- Reddit via `praw` in [`ingestion/reddit_producer.py`](ingestion/reddit_producer.py)
+- Hacker News via the Firebase API in [`ingestion/hackernews_producer.py`](ingestion/hackernews_producer.py)
 
 Each producer:
 
@@ -32,11 +32,11 @@ Each producer:
 - maps the source payload into a shared raw-post schema
 - publishes messages to the Kafka topic `raw_posts`
 
-The ingestion DAG starts this process every 6 hours in [`pipeline/ingestion_dag.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/pipeline/ingestion_dag.py).
+The ingestion DAG starts this process every 6 hours in [`pipeline/ingestion_dag.py`](pipeline/ingestion_dag.py).
 
 ### 2. Kafka consumption and raw storage
 
-The Kafka consumer in [`ingestion/consumer.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/ingestion/consumer.py) reads from `raw_posts` and processes each message in this order:
+The Kafka consumer in [`ingestion/consumer.py`](ingestion/consumer.py) reads from `raw_posts` and processes each message in this order:
 
 1. Coerce and normalize the incoming payload.
 2. Validate that the post matches the expected schema.
@@ -48,7 +48,7 @@ This gives the project a durable operational store in PostgreSQL before any LLM 
 
 ### 3. LLM classification
 
-After raw posts are stored, the same ingestion DAG runs the classification step in [`processing/llm_processor.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/processing/llm_processor.py).
+After raw posts are stored, the same ingestion DAG runs the classification step in [`processing/llm_processor.py`](processing/llm_processor.py).
 
 For each unprocessed post, the processor:
 
@@ -70,7 +70,7 @@ There is provider failover built into the batch processor: it probes OpenRouter 
 
 ### 4. Embedding generation
 
-Once classification finishes, the DAG runs embeddings in [`processing/embedder.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/processing/embedder.py).
+Once classification finishes, the DAG runs embeddings in [`processing/embedder.py`](processing/embedder.py).
 
 For each post without an embedding:
 
@@ -82,7 +82,7 @@ These embeddings support the semantic side of the RAG pipeline later.
 
 ### 5. Pipeline bookkeeping
 
-The ingestion DAG also records operational metadata in PostgreSQL through [`storage/db_client.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/storage/db_client.py), including:
+The ingestion DAG also records operational metadata in PostgreSQL through [`storage/db_client.py`](storage/db_client.py), including:
 
 - pipeline run start and end timestamps
 - inserted vs failed counts
@@ -92,9 +92,9 @@ This supports health checks and run monitoring.
 
 ### 6. dbt transformation layer
 
-The second Airflow DAG in [`pipeline/transformation_dag.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/pipeline/transformation_dag.py) waits for ingestion to finish, then runs dbt against the transformed warehouse layer.
+The second Airflow DAG in [`pipeline/transformation_dag.py`](pipeline/transformation_dag.py) waits for ingestion to finish, then runs dbt against the transformed warehouse layer.
 
-dbt reads operational data and builds analytical models in DuckDB. The documented layers are described in [`transform/docs/overview.md`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/transform/docs/overview.md):
+dbt reads operational data and builds analytical models in DuckDB. The documented layers are described in [`transform/docs/overview.md`](transform/docs/overview.md):
 
 - staging models: cleaned and typed source data
 - intermediate models: joined and enriched records
@@ -125,7 +125,7 @@ This is what powers the alert section in the dashboard.
 
 ### 8. Weekly insight report generation
 
-On Sundays, the transformation DAG runs the weekly reporting job through [`rag/corrective_rag.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/rag/corrective_rag.py).
+On Sundays, the transformation DAG runs the weekly reporting job through [`rag/corrective_rag.py`](rag/corrective_rag.py).
 
 That flow is:
 
@@ -141,7 +141,7 @@ The same RAG pipeline also powers the on-demand query endpoint exposed by the AP
 
 ### 9. FastAPI serving layer
 
-The API entrypoint is [`api/main.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/api/main.py).
+The API entrypoint is [`api/main.py`](api/main.py).
 
 On startup it initializes:
 
@@ -151,14 +151,14 @@ On startup it initializes:
 
 The main route groups are:
 
-- auth and email verification in [`api/auth/router.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/api/auth/router.py)
-- health checks in [`api/routes/health.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/api/routes/health.py)
-- recent classified posts in [`api/routes/posts.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/api/routes/posts.py)
-- sentiment trends from DuckDB marts in [`api/routes/trends.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/api/routes/trends.py)
-- tool comparisons in [`api/routes/tools.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/api/routes/tools.py)
-- Reddit vs HN divergence in [`api/routes/community.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/api/routes/community.py)
-- volume spike alerts in [`api/routes/alerts.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/api/routes/alerts.py)
-- natural-language insight generation in [`api/routes/query.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/api/routes/query.py)
+- auth and email verification in [`api/auth/router.py`](api/auth/router.py)
+- health checks in [`api/routes/health.py`](api/routes/health.py)
+- recent classified posts in [`api/routes/posts.py`](api/routes/posts.py)
+- sentiment trends from DuckDB marts in [`api/routes/trends.py`](api/routes/trends.py)
+- tool comparisons in [`api/routes/tools.py`](api/routes/tools.py)
+- Reddit vs HN divergence in [`api/routes/community.py`](api/routes/community.py)
+- volume spike alerts in [`api/routes/alerts.py`](api/routes/alerts.py)
+- natural-language insight generation in [`api/routes/query.py`](api/routes/query.py)
 
 The API mixes PostgreSQL and DuckDB on purpose:
 
@@ -168,7 +168,7 @@ The API mixes PostgreSQL and DuckDB on purpose:
 
 ### 10. Streamlit dashboard
 
-The dashboard entrypoint is [`dashboard/app.py`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/dashboard/app.py).
+The dashboard entrypoint is [`dashboard/app.py`](dashboard/app.py).
 
 It uses the FastAPI backend as its data source and exposes these user-facing workflows:
 
@@ -228,7 +228,7 @@ tests/        Unit and integration-style test coverage
 
 ## Local Environment
 
-Environment variables are defined in [`.env.example`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/.env.example). The main services and credentials expected by the project are:
+Environment variables are defined in [`.env.example`](.env.example). The main services and credentials expected by the project are:
 
 - Reddit API credentials
 - one or more LLM provider keys
@@ -250,8 +250,8 @@ cp .env.example .env
 
 If you are running Airflow- or dbt-specific environments separately, the repo also includes:
 
-- [`requirements-airflow.txt`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/requirements-airflow.txt)
-- [`requirements-dbt.txt`](/Users/anaghar/Documents/Portfolio_Projects/Devpulse-Platform/requirements-dbt.txt)
+- [`requirements-airflow.txt`](requirements-airflow.txt)
+- [`requirements-dbt.txt`](requirements-dbt.txt)
 
 ## Running The Project
 

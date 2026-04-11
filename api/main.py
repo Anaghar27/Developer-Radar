@@ -11,6 +11,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from api.auth.router import router as auth_router
+from api.config import validate_config
 from api.routes.alerts import router as alerts_router
 from api.routes.cache import router as cache_router
 from api.routes.community import router as community_router
@@ -33,6 +34,7 @@ limiter = Limiter(key_func=get_remote_address)
 async def lifespan(app: FastAPI):
     """Startup: create asyncpg pool + Redis connection. Shutdown: close both."""
     # Startup
+    validate_config()
     logger.info("Starting DevPulse API...")
 
     # asyncpg connection pool

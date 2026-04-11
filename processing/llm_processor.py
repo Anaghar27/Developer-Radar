@@ -1,5 +1,6 @@
 """LLM classification pipeline."""
 
+import argparse
 import json
 import logging
 import re
@@ -8,8 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from threading import Event, Lock
 
-from llm_client import active_provider
-from processing.llm_client import call_llm
+from processing.llm_client import OPENROUTER_MODELS, call_llm
 from processing.prompts import format_prompt
 from storage import db_client
 from storage.db_client import insert_failed_event
@@ -23,6 +23,21 @@ REQUIRED_KEYS = {
     "controversy_score",
     "reasoning",
 }
+
+
+def _extract_sentiment(raw: str) -> str | None:
+    """Best-effort extraction of sentiment from a raw model response."""
+    cleaned = raw.strip()
+    cleaned = re.sub(r"^\s*```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```\s*$", "", cleaned)
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    sentiment = parsed.get("sentiment")
+    return sentiment if isinstance(sentiment, str) else None
 
 
 def _parse_response(raw: str) -> dict | None:
@@ -80,6 +95,17 @@ def _probe_openrouter() -> bool:
         return False
 
 
+def _reject_frustrated_sentiment(post: dict, post_id: str) -> None:
+    """Purge posts rejected specifically for invalid frustrated sentiment."""
+    logger.warning("Rejecting post %s due to invalid sentiment value 'frustrated'", post_id)
+    db_client.delete_raw_post_and_embedding(post_id)
+    insert_failed_event(
+        event_type="classification",
+        payload={"post_id": post_id, "title": post.get("title", "")[:200]},
+        error_reason="Rejected classification: invalid sentiment value frustrated",
+    )
+
+
 def classify_post(post: dict, post_id: str, openai_fallback: Event) -> dict | None:
     """Classify one raw post with the LLM and return parsed structured output.
 
@@ -101,6 +127,9 @@ def classify_post(post: dict, post_id: str, openai_fallback: Event) -> dict | No
                 result = _parse_response(raw)
                 if result is not None:
                     return result
+                if _extract_sentiment(raw) == "frustrated":
+                    _reject_frustrated_sentiment(post, post_id)
+                    return None
                 logger.warning("Invalid structure from OpenRouter for post %s", post_id)
             except Exception as exc:
                 if not openai_fallback.is_set():
@@ -116,6 +145,9 @@ def classify_post(post: dict, post_id: str, openai_fallback: Event) -> dict | No
                 result = _parse_response(raw)
                 if result is not None:
                     return result
+                if _extract_sentiment(raw) == "frustrated":
+                    _reject_frustrated_sentiment(post, post_id)
+                    return None
                 logger.warning("Invalid structure from gpt-4o-mini for post %s", post_id)
             except Exception as exc:
                 logger.warning("gpt-4o-mini failed for post %s: %s", post_id, exc)
@@ -187,7 +219,11 @@ def process_batch(limit: int = 100, ingest_batch_id: str | None = None, workers:
     if not _probe_openrouter():
         openai_fallback.set()
 
-    provider_label = "openai/gpt-4o-mini" if openai_fallback.is_set() else active_provider("openrouter")
+    provider_label = (
+        "openai/gpt-4o-mini"
+        if openai_fallback.is_set()
+        else f"openrouter/{OPENROUTER_MODELS[0]}"
+    )
     batch_start = time.time()
     logger.info(
         "===== LLM batch START: provider=%s total_posts=%s workers=%s batch_id=%s start_time=%s =====",
@@ -213,7 +249,64 @@ def process_batch(limit: int = 100, ingest_batch_id: str | None = None, workers:
         total_elapsed,
         datetime.now(UTC).isoformat(),
     )
+    return counters["processed"]
+
+
+def retry_unclassified_posts(
+    limit: int = 100,
+    ingest_batch_id: str | None = None,
+    workers: int = 5,
+) -> int:
+    """Retry classification for raw posts that do not yet have processed rows."""
+    logger.info(
+        "Retrying unclassified posts: limit=%s ingest_batch_id=%s workers=%s",
+        limit,
+        ingest_batch_id,
+        workers,
+    )
+    return process_batch(limit=limit, ingest_batch_id=ingest_batch_id, workers=workers)
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run or retry LLM classification for unprocessed raw posts.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="Maximum number of unclassified posts to process.",
+    )
+    parser.add_argument(
+        "--ingest-batch-id",
+        default=None,
+        help="Optional ingest_batch_id to scope the retry to one batch.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=5,
+        help="Number of worker threads for classification.",
+    )
+    parser.add_argument(
+        "--retry-unclassified",
+        action="store_true",
+        help="Retry raw posts that are still missing processed classifications.",
+    )
+    return parser
 
 
 if __name__ == "__main__":
-    process_batch()
+    args = _build_arg_parser().parse_args()
+    if args.retry_unclassified:
+        retry_unclassified_posts(
+            limit=args.limit,
+            ingest_batch_id=args.ingest_batch_id,
+            workers=args.workers,
+        )
+    else:
+        process_batch(
+            limit=args.limit,
+            ingest_batch_id=args.ingest_batch_id,
+            workers=args.workers,
+        )

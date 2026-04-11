@@ -6,7 +6,7 @@ from threading import Event
 from unittest.mock import MagicMock, patch
 
 from processing.embedder import embed_post
-from processing.llm_processor import _parse_response, _process_single, classify_post
+from processing.llm_processor import _parse_response, _process_single, classify_post, process_batch
 from processing.prompts import format_prompt
 
 VALID_RESPONSE = json.dumps(
@@ -127,6 +127,34 @@ def test_classify_post_invalid_response_routes_to_dead_letter():
             assert result is None
             mock_dead_letter.assert_called_once()
             assert mock_dead_letter.call_args.kwargs["event_type"] == "classification"
+
+
+def test_classify_post_frustrated_sentiment_purges_raw_post():
+    """Invalid frustrated sentiment should purge the raw post so it cannot be embedded."""
+    raw = json.dumps(
+        {
+            "sentiment": "frustrated",
+            "emotion": "frustrated",
+            "topic": "Other",
+            "tool_mentioned": None,
+            "controversy_score": 4,
+            "reasoning": "The post expresses frustration.",
+        }
+    )
+
+    with patch("processing.llm_processor.call_llm", return_value=raw), \
+         patch("processing.llm_processor.db_client.delete_raw_post_and_embedding") as mock_delete, \
+         patch("processing.llm_processor.insert_failed_event") as mock_dead_letter:
+        result = classify_post(
+            {"title": "Frustrated post", "body": "Body text"},
+            post_id="frustrated_123",
+            openai_fallback=Event(),
+        )
+
+    assert result is None
+    mock_delete.assert_called_once_with("frustrated_123")
+    mock_dead_letter.assert_called_once()
+    assert "invalid sentiment value frustrated" in mock_dead_letter.call_args.kwargs["error_reason"]
 
 
 def test_classify_post_llm_failure_routes_to_dead_letter():
@@ -293,3 +321,23 @@ def test_classify_post_handles_none_body():
         )
     assert result is not None
     assert result["sentiment"] == "neutral"
+
+
+def test_process_batch_returns_processed_count():
+    """process_batch returns the count of posts successfully classified."""
+    posts = [
+        {"id": "p1", "title": "Title 1", "body": "Body 1"},
+        {"id": "p2", "title": "Title 2", "body": "Body 2"},
+    ]
+
+    with patch("processing.llm_processor.db_client.fetch_unprocessed_posts", return_value=posts), \
+         patch("processing.llm_processor._probe_openrouter", return_value=True), \
+         patch("processing.llm_processor._process_single") as mock_process_single:
+
+        def mark_processed(post, index, total, lock, counters, openai_fallback):
+            counters["processed"] += 1
+
+        mock_process_single.side_effect = mark_processed
+        result = process_batch(limit=2, ingest_batch_id="batch-1", workers=1)
+
+    assert result == 2

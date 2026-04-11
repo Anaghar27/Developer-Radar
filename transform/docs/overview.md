@@ -40,7 +40,7 @@ All 4 mart models use incremental materialization:
 ## Live Documentation
 dbt docs are automatically deployed to GitHub Pages on every push to main.
 
-**Live docs:** https://anaghar27.github.io/Devpulse-Platform/
+**Live docs:** `transform/target/index.html`
 
 The docs include:
 - Full lineage graph (source → staging → intermediate → marts)

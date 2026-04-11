@@ -1,19 +1,17 @@
 """
-LLM call tracker for the Corrective RAG pipeline.
+LLM usage tracker for DevPulse.
 
-Tracks every OpenRouter call with:
-  - operation name (grade_relevance, generate_insight)
-  - model used
-  - input / output / total tokens
-  - latency
+Tracks every LLM call across classification, RAG grading,
+insight generation, and query expansion.
 
-At the end of a pipeline run, call .summary() to get per-model and
-per-operation breakdowns, and .save() to persist the full log to
-logs/llm/<timestamp>_<query_hash>.json.
+Persists in memory for cost and quality observability.
 """
+
+from __future__ import annotations
 
 import json
 import logging
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timezone
 from pathlib import Path
@@ -27,29 +25,147 @@ LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 @dataclass
 class LLMCall:
-    operation: str          # grade_relevance | generate_insight
+    """Represents a single LLM API call."""
+
+    operation: str
+    provider: str
     model: str
-    prompt_tokens: int
-    completion_tokens: int
-    total_tokens: int
-    latency_ms: float
-    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
-    post_id: str | None = None   # set for per-post grading calls
+    input_tokens: int = 0
+    output_tokens: int = 0
+    latency_ms: float = 0.0
+    success: bool = True
+    error_reason: Optional[str] = None
+    cost_usd: float = 0.0
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    post_id: str | None = None
+
+
+COST_PER_1M_INPUT = {
+    "gpt-4o-mini": 0.15,
+    "text-embedding-3-small": 0.02,
+    "nvidia/llama-3.1-nemotron-ultra-253b-v1:free": 0.0,
+    "stepfun-ai/step-3-5-flash": 0.0,
+    "nvidia/llama-3.1-nemotron-nano-8b-instruct:free": 0.0,
+}
+
+COST_PER_1M_OUTPUT = {
+    "gpt-4o-mini": 0.60,
+    "text-embedding-3-small": 0.0,
+    "nvidia/llama-3.1-nemotron-ultra-253b-v1:free": 0.0,
+    "stepfun-ai/step-3-5-flash": 0.0,
+    "nvidia/llama-3.1-nemotron-nano-8b-instruct:free": 0.0,
+}
+
+_call_log: list[LLMCall] = []
+_total_cost_usd = 0.0
+_lock = threading.Lock()
+
+
+def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Estimate call cost in USD from token counts."""
+    input_cost = COST_PER_1M_INPUT.get(model, 0.0) * input_tokens / 1_000_000
+    output_cost = COST_PER_1M_OUTPUT.get(model, 0.0) * output_tokens / 1_000_000
+    return round(input_cost + output_cost, 8)
+
+
+def estimate_tokens(text: str) -> int:
+    """Estimate token count using a simple 4-chars-per-token heuristic."""
+    return max(1, len(text) // 4) if text else 0
+
+
+def record_call(call: LLMCall) -> None:
+    """Record one LLM call in memory and log a concise summary."""
+    global _total_cost_usd
+    with _lock:
+        _call_log.append(call)
+        _total_cost_usd += call.cost_usd
+
+    status = "OK" if call.success else f"FAILED ({call.error_reason})"
+    logger.info(
+        "[LLM] %s | %s/%s | %.0fms | in=%s out=%s | $%.6f | %s",
+        call.operation,
+        call.provider,
+        call.model,
+        call.latency_ms,
+        call.input_tokens,
+        call.output_tokens,
+        call.cost_usd,
+        status,
+    )
+
+
+def get_stats() -> dict:
+    """Return aggregated in-memory LLM usage stats."""
+    with _lock:
+        calls = list(_call_log)
+        total_cost_usd = _total_cost_usd
+
+    if not calls:
+        return {
+            "total_calls": 0,
+            "total_cost_usd": 0.0,
+            "by_operation": {},
+            "by_provider": {},
+            "success_rate": 1.0,
+            "avg_latency_ms": 0.0,
+        }
+
+    by_operation: dict[str, dict] = {}
+    by_provider: dict[str, dict] = {}
+
+    for call in calls:
+        op = by_operation.setdefault(
+            call.operation,
+            {"calls": 0, "cost_usd": 0.0, "total_latency_ms": 0.0, "failures": 0},
+        )
+        op["calls"] += 1
+        op["cost_usd"] += call.cost_usd
+        op["total_latency_ms"] += call.latency_ms
+        if not call.success:
+            op["failures"] += 1
+
+        provider = by_provider.setdefault(
+            call.provider,
+            {"calls": 0, "cost_usd": 0.0, "failures": 0},
+        )
+        provider["calls"] += 1
+        provider["cost_usd"] += call.cost_usd
+        if not call.success:
+            provider["failures"] += 1
+
+    successful = sum(1 for call in calls if call.success)
+    avg_latency = sum(call.latency_ms for call in calls) / len(calls)
+
+    return {
+        "total_calls": len(calls),
+        "total_cost_usd": round(total_cost_usd, 6),
+        "success_rate": round(successful / len(calls), 4),
+        "avg_latency_ms": round(avg_latency, 1),
+        "by_operation": by_operation,
+        "by_provider": by_provider,
+    }
+
+
+def reset_stats() -> None:
+    """Clear the in-memory tracker state."""
+    global _call_log, _total_cost_usd
+    with _lock:
+        _call_log = []
+        _total_cost_usd = 0.0
 
 
 class LLMTracker:
     """
-    Accumulates LLM call stats for one pipeline run.
-    Thread-safe for sequential use within a single run.
+    Backward-compatible tracker facade used by Corrective RAG.
+
+    Calls are recorded into the same global in-memory store so per-run
+    logging continues to work alongside shared client tracking.
     """
 
     def __init__(self, query: str, query_hash: str):
         self.query = query
         self.query_hash = query_hash
         self.started_at = datetime.now(UTC).isoformat()
-        self.calls: list[LLMCall] = []
-
-    # ── Recording ─────────────────────────────────────────────────────────────
 
     def record(
         self,
@@ -58,132 +174,96 @@ class LLMTracker:
         usage: dict,
         latency_ms: float,
         post_id: str | None = None,
+        provider: str = "openai",
     ) -> None:
-        """
-        Record one LLM call.
-
-        usage dict expected keys: prompt_tokens, completion_tokens, total_tokens
-        (standard OpenRouter / OpenAI usage block).
-        """
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", prompt_tokens + completion_tokens)
-
-        call = LLMCall(
-            operation=operation,
-            model=model,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-            latency_ms=round(latency_ms, 1),
-            post_id=post_id,
+        input_tokens = int(usage.get("prompt_tokens", 0))
+        output_tokens = int(usage.get("completion_tokens", 0))
+        record_call(
+            LLMCall(
+                operation=operation,
+                provider=provider,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                latency_ms=round(latency_ms, 1),
+                success=True,
+                cost_usd=estimate_cost(model, input_tokens, output_tokens),
+                post_id=post_id,
+            )
         )
-        self.calls.append(call)
-
-        logger.info(
-            "[LLM] op=%-20s model=%-45s  in=%5d  out=%5d  total=%6d  latency=%6.0fms%s",
-            operation,
-            model,
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            latency_ms,
-            f"  post_id={post_id}" if post_id else "",
-        )
-
-    # ── Aggregation ───────────────────────────────────────────────────────────
 
     def summary(self) -> dict:
-        """Return per-model and per-operation breakdowns plus grand totals."""
+        with _lock:
+            calls = [call for call in _call_log if call.timestamp.isoformat() >= self.started_at]
+
         by_model: dict[str, dict] = {}
         by_operation: dict[str, dict] = {}
+        for call in calls:
+            model_stats = by_model.setdefault(
+                call.model,
+                {
+                    "calls": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "total_latency_ms": 0.0,
+                },
+            )
+            model_stats["calls"] += 1
+            model_stats["input_tokens"] += call.input_tokens
+            model_stats["output_tokens"] += call.output_tokens
+            model_stats["total_tokens"] += call.input_tokens + call.output_tokens
+            model_stats["total_latency_ms"] += call.latency_ms
 
-        for c in self.calls:
-            # per model
-            m = by_model.setdefault(c.model, {
-                "calls": 0, "prompt_tokens": 0,
-                "completion_tokens": 0, "total_tokens": 0, "total_latency_ms": 0.0,
-            })
-            m["calls"] += 1
-            m["prompt_tokens"] += c.prompt_tokens
-            m["completion_tokens"] += c.completion_tokens
-            m["total_tokens"] += c.total_tokens
-            m["total_latency_ms"] += c.latency_ms
-
-            # per operation
-            op = by_operation.setdefault(c.operation, {
-                "calls": 0, "prompt_tokens": 0,
-                "completion_tokens": 0, "total_tokens": 0, "total_latency_ms": 0.0,
-            })
-            op["calls"] += 1
-            op["prompt_tokens"] += c.prompt_tokens
-            op["completion_tokens"] += c.completion_tokens
-            op["total_tokens"] += c.total_tokens
-            op["total_latency_ms"] += c.latency_ms
-
-        total_calls = len(self.calls)
-        total_prompt = sum(c.prompt_tokens for c in self.calls)
-        total_completion = sum(c.completion_tokens for c in self.calls)
-        total_tokens = sum(c.total_tokens for c in self.calls)
-        total_latency = sum(c.latency_ms for c in self.calls)
+            op_stats = by_operation.setdefault(
+                call.operation,
+                {
+                    "calls": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "total_latency_ms": 0.0,
+                },
+            )
+            op_stats["calls"] += 1
+            op_stats["input_tokens"] += call.input_tokens
+            op_stats["output_tokens"] += call.output_tokens
+            op_stats["total_tokens"] += call.input_tokens + call.output_tokens
+            op_stats["total_latency_ms"] += call.latency_ms
 
         return {
             "query": self.query,
             "query_hash": self.query_hash,
             "started_at": self.started_at,
             "totals": {
-                "calls": total_calls,
-                "prompt_tokens": total_prompt,
-                "completion_tokens": total_completion,
-                "total_tokens": total_tokens,
-                "total_latency_ms": round(total_latency, 1),
+                "calls": len(calls),
+                "input_tokens": sum(call.input_tokens for call in calls),
+                "output_tokens": sum(call.output_tokens for call in calls),
+                "total_tokens": sum(call.input_tokens + call.output_tokens for call in calls),
+                "total_latency_ms": round(sum(call.latency_ms for call in calls), 1),
             },
             "by_model": by_model,
             "by_operation": by_operation,
-            "calls": [asdict(c) for c in self.calls],
+            "calls": [asdict(call) for call in calls],
         }
 
     def log_summary(self) -> None:
-        """Print a human-readable summary to the Python logger."""
-        s = self.summary()
-        t = s["totals"]
-        sep = "─" * 70
-
-        logger.info(sep)
-        logger.info("[LLM SUMMARY] query='%s'", self.query[:80])
+        summary = self.summary()
+        totals = summary["totals"]
         logger.info(
-            "[LLM SUMMARY] TOTALS  calls=%d  in=%d  out=%d  total=%d  latency=%.0fms",
-            t["calls"], t["prompt_tokens"], t["completion_tokens"],
-            t["total_tokens"], t["total_latency_ms"],
+            "[LLM SUMMARY] query='%s' calls=%s in=%s out=%s total=%s latency=%.0fms",
+            self.query[:80],
+            totals["calls"],
+            totals["input_tokens"],
+            totals["output_tokens"],
+            totals["total_tokens"],
+            totals["total_latency_ms"],
         )
 
-        logger.info("[LLM SUMMARY] ── Per Model ──")
-        for model, stats in s["by_model"].items():
-            logger.info(
-                "  %-45s  calls=%2d  in=%6d  out=%6d  total=%7d  latency=%7.0fms",
-                model,
-                stats["calls"], stats["prompt_tokens"],
-                stats["completion_tokens"], stats["total_tokens"],
-                stats["total_latency_ms"],
-            )
-
-        logger.info("[LLM SUMMARY] ── Per Operation ──")
-        for op, stats in s["by_operation"].items():
-            logger.info(
-                "  %-20s  calls=%2d  in=%6d  out=%6d  total=%7d  latency=%7.0fms",
-                op,
-                stats["calls"], stats["prompt_tokens"],
-                stats["completion_tokens"], stats["total_tokens"],
-                stats["total_latency_ms"],
-            )
-
-        logger.info(sep)
-
     def save(self) -> Path:
-        """Persist full log JSON to logs/llm/<timestamp>_<query_hash>.json."""
         ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
         filename = LOGS_DIR / f"{ts}_{self.query_hash[:8]}.json"
-        with open(filename, "w") as f:
+        with open(filename, "w", encoding="utf-8") as f:
             json.dump(self.summary(), f, indent=2, default=str)
-        logger.info("[LLM TRACKER] Log saved → %s", filename)
+        logger.info("[LLM TRACKER] Log saved -> %s", filename)
         return filename

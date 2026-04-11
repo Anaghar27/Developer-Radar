@@ -17,11 +17,13 @@ Usage:
 
 import logging
 import os
+import threading
 import time
 from typing import Optional
 
 import requests
 from dotenv import load_dotenv
+from rag.llm_tracker import LLMCall, estimate_cost, estimate_tokens, record_call
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -43,6 +45,28 @@ OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 # ── Rate limiting ─────────────────────────────────────────────────────────────
 _last_openrouter_call = 0.0
 OPENROUTER_MIN_DELAY = 1.0  # seconds between OpenRouter calls
+_tracking_state = threading.local()
+
+
+def _reset_tracking_state() -> None:
+    _tracking_state.recorded = False
+
+
+def _mark_tracked() -> None:
+    _tracking_state.recorded = True
+
+
+def _was_tracked() -> bool:
+    return getattr(_tracking_state, "recorded", False)
+
+
+def _safe_record(call: LLMCall) -> None:
+    """Best-effort tracker hook that never affects primary LLM behavior."""
+    try:
+        record_call(call)
+        _mark_tracked()
+    except Exception:
+        logger.exception("LLM tracker failed while recording call")
 
 
 # ── Core call functions ───────────────────────────────────────────────────────
@@ -68,6 +92,7 @@ def _call_openrouter(
         if elapsed < OPENROUTER_MIN_DELAY:
             time.sleep(OPENROUTER_MIN_DELAY - elapsed)
 
+        start = time.time()
         try:
             response = requests.post(
                 OPENROUTER_BASE_URL,
@@ -85,6 +110,7 @@ def _call_openrouter(
                 timeout=30,
             )
             _last_openrouter_call = time.time()
+            latency = (time.time() - start) * 1000
 
             # Handle rate limits
             if response.status_code == 429:
@@ -98,9 +124,35 @@ def _call_openrouter(
                 raise Exception(f"OpenRouter auth/billing error: {response.status_code}")
 
             response.raise_for_status()
-            return response.json()["choices"][0]["message"]["content"]
+            content = response.json()["choices"][0]["message"]["content"]
+            input_tok = estimate_tokens(prompt)
+            output_tok = estimate_tokens(content)
+            _safe_record(
+                LLMCall(
+                    operation="llm_call",
+                    provider="openrouter",
+                    model=m,
+                    input_tokens=input_tok,
+                    output_tokens=output_tok,
+                    latency_ms=latency,
+                    success=True,
+                    cost_usd=estimate_cost(m, input_tok, output_tok),
+                )
+            )
+            return content
 
         except Exception as e:
+            latency = (time.time() - start) * 1000
+            _safe_record(
+                LLMCall(
+                    operation="llm_call",
+                    provider="openrouter",
+                    model=m,
+                    latency_ms=latency,
+                    success=False,
+                    error_reason=str(e)[:200],
+                )
+            )
             last_error = e
             logger.warning(f"OpenRouter attempt {attempt + 1} failed with {m}: {e}")
             continue
@@ -117,6 +169,7 @@ def _call_openai(
     Call OpenAI API directly.
     Used for RAG relevance grading and insight generation.
     """
+    start = time.time()
     try:
         from openai import OpenAI
         client = OpenAI(api_key=OPENAI_API_KEY)
@@ -126,8 +179,35 @@ def _call_openai(
             max_tokens=max_tokens,
             timeout=60,
         )
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        latency = (time.time() - start) * 1000
+        input_tok = estimate_tokens(prompt)
+        output_tok = estimate_tokens(content or "")
+        _safe_record(
+            LLMCall(
+                operation="llm_call",
+                provider="openai",
+                model=model,
+                input_tokens=input_tok,
+                output_tokens=output_tok,
+                latency_ms=latency,
+                success=True,
+                cost_usd=estimate_cost(model, input_tok, output_tok),
+            )
+        )
+        return content
     except Exception as e:
+        latency = (time.time() - start) * 1000
+        _safe_record(
+            LLMCall(
+                operation="llm_call",
+                provider="openai",
+                model=model,
+                latency_ms=latency,
+                success=False,
+                error_reason=str(e)[:200],
+            )
+        )
         logger.error(f"OpenAI call failed: {e}")
         raise
 
@@ -152,20 +232,56 @@ def call_llm(
     Returns:
         Response text string
     """
-    if provider == "openai":
-        return _call_openai(
-            prompt,
-            model=model or OPENAI_DEFAULT_MODEL,
-            max_tokens=max_tokens,
+    _reset_tracking_state()
+    resolved_model = model or OPENAI_DEFAULT_MODEL if provider == "openai" else model or OPENROUTER_MODELS[0]
+    start = time.time()
+    try:
+        if provider == "openai":
+            result = _call_openai(
+                prompt,
+                model=model or OPENAI_DEFAULT_MODEL,
+                max_tokens=max_tokens,
+            )
+        elif provider == "openrouter":
+            result = _call_openrouter(
+                prompt,
+                model=model,
+                max_tokens=max_tokens,
+            )
+        else:
+            raise ValueError(f"Unknown provider: {provider}. Use 'openrouter' or 'openai'.")
+    except Exception as exc:
+        if not _was_tracked():
+            latency = (time.time() - start) * 1000
+            _safe_record(
+                LLMCall(
+                    operation="llm_call",
+                    provider=provider,
+                    model=resolved_model,
+                    latency_ms=latency,
+                    success=False,
+                    error_reason=str(exc)[:200],
+                )
+            )
+        raise
+
+    if not _was_tracked():
+        latency = (time.time() - start) * 1000
+        input_tok = estimate_tokens(prompt)
+        output_tok = estimate_tokens(result or "")
+        _safe_record(
+            LLMCall(
+                operation="llm_call",
+                provider=provider,
+                model=resolved_model,
+                input_tokens=input_tok,
+                output_tokens=output_tok,
+                latency_ms=latency,
+                success=True,
+                cost_usd=estimate_cost(resolved_model, input_tok, output_tok),
+            )
         )
-    elif provider == "openrouter":
-        return _call_openrouter(
-            prompt,
-            model=model,
-            max_tokens=max_tokens,
-        )
-    else:
-        raise ValueError(f"Unknown provider: {provider}. Use 'openrouter' or 'openai'.")
+    return result
 
 
 # ── Embedding entry point ─────────────────────────────────────────────────────
@@ -176,6 +292,7 @@ def get_embedding(text: str, model: str = "text-embedding-3-small") -> list[floa
     Returns 1536-dim vector for text-embedding-3-small.
     Always uses OpenAI — no OpenRouter alternative for embeddings.
     """
+    start = time.time()
     from openai import OpenAI
     client = OpenAI(api_key=OPENAI_API_KEY)
     text = text[:8000] if text else ""
@@ -186,7 +303,33 @@ def get_embedding(text: str, model: str = "text-embedding-3-small") -> list[floa
             input=text,
             model=model,
         )
-        return response.data[0].embedding
+        embedding = response.data[0].embedding
+        latency = (time.time() - start) * 1000
+        input_tok = estimate_tokens(text)
+        _safe_record(
+            LLMCall(
+                operation="embedding",
+                provider="openai",
+                model=model,
+                input_tokens=input_tok,
+                output_tokens=0,
+                latency_ms=latency,
+                success=True,
+                cost_usd=estimate_cost(model, input_tok, 0),
+            )
+        )
+        return embedding
     except Exception as e:
+        latency = (time.time() - start) * 1000
+        _safe_record(
+            LLMCall(
+                operation="embedding",
+                provider="openai",
+                model=model,
+                latency_ms=latency,
+                success=False,
+                error_reason=str(e)[:200],
+            )
+        )
         logger.error(f"Embedding failed: {e}")
         return [0.0] * 1536

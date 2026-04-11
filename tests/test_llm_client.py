@@ -176,3 +176,35 @@ def test_unified_client_openai_error_propagates():
                side_effect=Exception("OpenAI down")):
         with pytest.raises(Exception, match="OpenAI down"):
             call_llm("prompt", provider="openai")
+
+
+def test_llm_tracker_counts_mocked_openai_call():
+    """call_llm should still record a single call when _call_openai is patched."""
+    from processing.llm_client import call_llm
+    from rag.llm_tracker import get_stats, reset_stats
+
+    reset_stats()
+    with patch("processing.llm_client._call_openai", return_value="test"):
+        result = call_llm("test prompt", provider="openai")
+
+    stats = get_stats()
+    assert result == "test"
+    assert stats["total_calls"] == 1
+    assert stats["by_provider"]["openai"]["calls"] == 1
+
+
+def test_llm_tracker_records_embedding_call():
+    """get_embedding should record an embedding usage event."""
+    from processing.llm_client import get_embedding
+    from rag.llm_tracker import get_stats, reset_stats
+
+    reset_stats()
+    mock_client = MagicMock()
+    mock_client.embeddings.create.return_value.data = [MagicMock(embedding=[0.1] * 1536)]
+
+    with patch("openai.OpenAI", return_value=mock_client):
+        get_embedding("tracked embedding text")
+
+    stats = get_stats()
+    assert stats["total_calls"] == 1
+    assert stats["by_operation"]["embedding"]["calls"] == 1

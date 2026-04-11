@@ -5,7 +5,9 @@ CREATE TABLE IF NOT EXISTS raw_posts (
     body TEXT,
     url TEXT,
     score INTEGER,
-    created_at TIMESTAMP
+    created_at TIMESTAMP,
+    -- ingest_batch_id: groups posts from the same DAG run for batch-scoped processing
+    ingest_batch_id VARCHAR(255)
 );
 
 CREATE TABLE IF NOT EXISTS processed_posts (

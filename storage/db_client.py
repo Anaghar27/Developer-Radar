@@ -10,21 +10,6 @@ from psycopg2 import extras
 logger = logging.getLogger(__name__)
 
 
-def ensure_raw_posts_batch_column() -> None:
-    """Ensure raw_posts has the ingest_batch_id column used for DAG batch scoping."""
-    query = """
-        ALTER TABLE raw_posts
-        ADD COLUMN IF NOT EXISTS ingest_batch_id TEXT
-    """
-    try:
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(query)
-    except psycopg2.Error:
-        logger.exception("Failed to ensure raw_posts.ingest_batch_id column exists")
-        raise
-
-
 def get_connection():
     """Create and return a new PostgreSQL connection using environment variables."""
     try:
@@ -42,7 +27,6 @@ def get_connection():
 
 def insert_raw_post(post: dict) -> None:
     """Insert a raw post into raw_posts and ignore duplicates by post id."""
-    ensure_raw_posts_batch_column()
     query = """
         INSERT INTO raw_posts (id, source, title, body, url, score, created_at, ingest_batch_id)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -266,7 +250,6 @@ def fetch_unprocessed_posts(
     ingest_batch_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch raw posts without processed rows, optionally filtered to one ingest batch."""
-    ensure_raw_posts_batch_column()
     if ingest_batch_id is None:
         query = """
             SELECT
@@ -325,7 +308,6 @@ def fetch_batch_posts_without_embeddings(
     When ingest_batch_id is None, returns all posts without embeddings.
     When ingest_batch_id is provided, scopes to that batch only.
     """
-    ensure_raw_posts_batch_column()
     if ingest_batch_id is None:
         query = """
             SELECT
@@ -409,6 +391,20 @@ def smoke_test_db() -> dict[str, Any]:
         return dict(row)
     except psycopg2.Error:
         logger.exception("Database smoke test failed")
+        raise
+
+
+def delete_raw_post_and_embedding(post_id: str) -> None:
+    """Delete a raw post and any stored embedding for that post id."""
+    delete_embedding_query = "DELETE FROM post_embeddings WHERE post_id = %s"
+    delete_raw_query = "DELETE FROM raw_posts WHERE id = %s"
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(delete_embedding_query, (post_id,))
+                cur.execute(delete_raw_query, (post_id,))
+    except psycopg2.Error:
+        logger.exception("Failed to delete raw post and embedding for post: %s", post_id)
         raise
 
 
