@@ -1,6 +1,5 @@
-import os
 import logging
-from typing import Optional
+import os
 
 import duckdb
 from fastapi import APIRouter, Depends, Query, Request
@@ -16,10 +15,10 @@ DUCKDB_PATH = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
 
 
 def _build_posts_filters(
-    source: Optional[str] = None,
-    topic: Optional[str] = None,
-    tool: Optional[str] = None,
-    sentiment: Optional[str] = None,
+    source: str | None = None,
+    topic: str | None = None,
+    tool: str | None = None,
+    sentiment: str | None = None,
 ) -> tuple[str, list]:
     """
     Build WHERE clause and params for posts queries.
@@ -49,10 +48,10 @@ def _build_posts_filters(
 @router.get("/posts", response_model=PostsListResponse, tags=["data"])
 async def get_posts(
     request: Request,
-    source: Optional[str] = Query(None, description="Filter by source: reddit or hackernews"),
-    topic: Optional[str] = Query(None, description="Filter by topic"),
-    tool: Optional[str] = Query(None, description="Filter by tool_mentioned"),
-    sentiment: Optional[str] = Query(None, description="Filter by sentiment"),
+    source: str | None = Query(None, description="Filter by source: reddit or hackernews"),
+    topic: str | None = Query(None, description="Filter by topic"),
+    tool: str | None = Query(None, description="Filter by tool_mentioned"),
+    sentiment: str | None = Query(None, description="Filter by sentiment"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0, description="Number of posts to skip for pagination"),
     current_user: dict = Depends(get_current_user),
