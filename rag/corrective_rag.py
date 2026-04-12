@@ -4,6 +4,7 @@ import logging
 from datetime import UTC, datetime
 
 from dotenv import load_dotenv
+import requests
 
 from processing.llm_client import call_llm
 from rag.hybrid_retriever import retrieve
@@ -69,8 +70,16 @@ Return ONLY the JSON array, no other text."""
         logger.info(f"Query expanded: {len(expanded)} variants for '{query[:60]}'")
         return expanded
 
+    except json.JSONDecodeError as e:
+        logger.warning("Query expansion parse failed: %s. Using original query.", e)
+        return [query]
     except Exception as e:
-        logger.warning(f"Query expansion failed: {e}. Using original query only.")
+        # Catch-all for truly unexpected query expansion failures.
+        logger.exception(
+            "Query expansion failed | error=%s: %s. Using original query.",
+            type(e).__name__,
+            e,
+        )
         return [query]
 
 
@@ -127,8 +136,27 @@ Return ONLY the JSON array, no other text."""
 
         return [max(0.0, min(1.0, float(s))) for s in scores]
 
+    except json.JSONDecodeError as e:
+        logger.warning(
+            "Relevance grading parse error | batch_size=%s | response_snippet=%s",
+            len(posts),
+            str(e)[:100],
+        )
+        return [0.5] * len(posts)
+    except (KeyError, ValueError, TypeError) as e:
+        logger.warning(
+            "Relevance grading value error | error=%s: %s",
+            type(e).__name__,
+            e,
+        )
+        return [0.5] * len(posts)
     except Exception as e:
-        logger.warning(f"Batch grading failed for {len(posts)} posts: {e}. Using 0.5 defaults.")
+        # Catch-all for truly unexpected relevance grading failures.
+        logger.exception(
+            "Relevance grading unexpected error | error=%s: %s",
+            type(e).__name__,
+            e,
+        )
         return [0.5] * len(posts)
 
 
@@ -217,8 +245,19 @@ Write a 3-5 paragraph insight report:"""
             model="gpt-4o-mini",
             max_tokens=800,
         )
+    except requests.exceptions.Timeout:
+        logger.error("Insight generation timed out after 60s")
+        return "Insight generation timed out. Please try again."
+    except requests.exceptions.ConnectionError as e:
+        logger.error("Insight generation connection failed: %s", e)
+        return "Could not connect to LLM provider. Please try again."
     except Exception as e:
-        logger.error(f"Insight generation failed: {e}")
+        # Catch-all for truly unexpected insight generation failures.
+        logger.exception(
+            "Insight generation failed | error=%s: %s",
+            type(e).__name__,
+            e,
+        )
         return f"Insight generation failed: {str(e)}"
 
 

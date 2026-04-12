@@ -7,6 +7,12 @@ from datetime import UTC, datetime
 
 from dotenv import load_dotenv
 from kafka import KafkaConsumer, KafkaProducer
+import psycopg2
+
+try:
+    from kafka.errors import KafkaError
+except ImportError:  # pragma: no cover - test stubs may not expose kafka.errors
+    KafkaError = Exception
 
 from processing.validator import coerce_message, validate_post
 from storage.db_client import insert_failed_event, insert_raw_post, post_exists
@@ -59,13 +65,43 @@ def route_failed_event(
 
     try:
         failed_producer.send(FAILED_EVENTS_TOPIC, value=failed_event)
-    except Exception:
-        logger.exception("Failed to publish invalid message to Kafka failed_events topic")
+    except KafkaError as exc:
+        logger.error(
+            "Failed to publish invalid message to Kafka failed_events topic | "
+            "batch_id=%s | error_type=%s | error=%s",
+            ingest_batch_id,
+            type(exc).__name__,
+            exc,
+        )
+    except Exception as exc:
+        # Catch-all for truly unexpected Kafka routing failures.
+        logger.exception(
+            "Unexpected failure publishing invalid message to Kafka failed_events topic | "
+            "batch_id=%s | error_type=%s | error=%s",
+            ingest_batch_id,
+            type(exc).__name__,
+            exc,
+        )
 
     try:
         insert_failed_event("ingestion", original_message, error_reason)
-    except Exception:
-        logger.exception("Failed to persist invalid message to failed_events table")
+    except (psycopg2.DatabaseError, psycopg2.OperationalError) as exc:
+        logger.error(
+            "Failed to persist invalid message to failed_events table | "
+            "batch_id=%s | error_type=%s | error=%s",
+            ingest_batch_id,
+            type(exc).__name__,
+            exc,
+        )
+    except Exception as exc:
+        # Catch-all for truly unexpected failed-events persistence issues.
+        logger.exception(
+            "Unexpected failure persisting invalid message to failed_events table | "
+            "batch_id=%s | error_type=%s | error=%s",
+            ingest_batch_id,
+            type(exc).__name__,
+            exc,
+        )
 
 
 def build_post_record(message: dict) -> dict:
@@ -113,9 +149,11 @@ def run(ingest_batch_id: str) -> dict:
         for record in consumer:
             original_message = record.value
             summary["total_consumed"] += 1
+            post_id = None
 
             try:
                 coerced_message = coerce_message(original_message)
+                post_id = coerced_message.get("id")
                 is_valid, error_reason = validate_post(coerced_message)
 
                 if not is_valid:
@@ -139,12 +177,16 @@ def run(ingest_batch_id: str) -> dict:
                 try:
                     insert_raw_post(post_record)
                     summary["inserted"] += 1
-                except Exception as exc:
+                except (psycopg2.DatabaseError, psycopg2.OperationalError) as exc:
                     summary["failed"] += 1
                     error_reason = f"PostgreSQL insert failed: {exc}"
-                    logger.exception(
-                        "Failed to insert raw post into PostgreSQL: %s",
-                        coerced_message["id"],
+                    logger.error(
+                        "DB insert failed | post_id=%s | batch_id=%s | "
+                        "error_type=%s | error=%s",
+                        post_id,
+                        ingest_batch_id,
+                        type(exc).__name__,
+                        exc,
                     )
                     route_failed_event(
                         failed_producer,
@@ -152,10 +194,52 @@ def run(ingest_batch_id: str) -> dict:
                         error_reason,
                         ingest_batch_id,
                     )
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+                summary["failed"] += 1
+                error_reason = f"Message parse failed: {exc}"
+                logger.error(
+                    "Message parse failed | post_id=%s | batch_id=%s | "
+                    "error_type=%s | error=%s",
+                    post_id,
+                    ingest_batch_id,
+                    type(exc).__name__,
+                    exc,
+                )
+                route_failed_event(
+                    failed_producer,
+                    original_message if isinstance(original_message, dict) else {},
+                    error_reason,
+                    ingest_batch_id,
+                )
+            except (psycopg2.DatabaseError, psycopg2.OperationalError) as exc:
+                summary["failed"] += 1
+                error_reason = f"Database error while processing message: {exc}"
+                logger.error(
+                    "DB processing failed | post_id=%s | batch_id=%s | "
+                    "error_type=%s | error=%s",
+                    post_id,
+                    ingest_batch_id,
+                    type(exc).__name__,
+                    exc,
+                )
+                route_failed_event(
+                    failed_producer,
+                    original_message if isinstance(original_message, dict) else {},
+                    error_reason,
+                    ingest_batch_id,
+                )
             except Exception as exc:
+                # Catch-all for truly unexpected consumer processing errors.
                 summary["failed"] += 1
                 error_reason = f"Unexpected consumer processing error: {exc}"
-                logger.exception("Failed to process consumed message")
+                logger.exception(
+                    "Unexpected error processing message | post_id=%s | batch_id=%s | "
+                    "error_type=%s | error=%s",
+                    post_id,
+                    ingest_batch_id,
+                    type(exc).__name__,
+                    exc,
+                )
                 route_failed_event(
                     failed_producer,
                     original_message if isinstance(original_message, dict) else {},
@@ -198,10 +282,30 @@ def consume_failed_events(ingest_batch_id: str) -> int:
                     error_reason=message["error_reason"],
                 )
                 inserted_count += 1
-            except Exception:
-                logger.exception(
-                    "Failed to persist dead letter event for batch %s",
+            except (psycopg2.DatabaseError, psycopg2.OperationalError) as exc:
+                logger.error(
+                    "Failed to persist dead letter event | batch_id=%s | "
+                    "error_type=%s | error=%s",
                     ingest_batch_id,
+                    type(exc).__name__,
+                    exc,
+                )
+            except (KeyError, TypeError) as exc:
+                logger.error(
+                    "Dead letter message parse failed | batch_id=%s | "
+                    "error_type=%s | error=%s",
+                    ingest_batch_id,
+                    type(exc).__name__,
+                    exc,
+                )
+            except Exception as exc:
+                # Catch-all for truly unexpected dead-letter consumer failures.
+                logger.exception(
+                    "Unexpected dead letter persistence failure | batch_id=%s | "
+                    "error_type=%s | error=%s",
+                    ingest_batch_id,
+                    type(exc).__name__,
+                    exc,
                 )
     finally:
         dl_consumer.close()
