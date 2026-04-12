@@ -3,8 +3,8 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from dotenv import load_dotenv
 import requests
+from dotenv import load_dotenv
 
 from processing.llm_client import call_llm
 from rag.hybrid_retriever import retrieve

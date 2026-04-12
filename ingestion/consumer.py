@@ -5,9 +5,9 @@ import logging
 import os
 from datetime import UTC, datetime
 
+import psycopg2
 from dotenv import load_dotenv
 from kafka import KafkaConsumer, KafkaProducer
-import psycopg2
 
 try:
     from kafka.errors import KafkaError
