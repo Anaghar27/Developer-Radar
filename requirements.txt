@@ -25,3 +25,5 @@ slowapi==0.1.9
 openai>=1.30.0
 # Optional: install for cross-encoder reranking in rag/reranker.py
 # sentence-transformers
+
+ruff==0.9.10

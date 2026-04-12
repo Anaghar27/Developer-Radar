@@ -5,7 +5,11 @@ from fastapi.responses import Response
 
 from api.auth.dependencies import get_current_user
 from api.schemas import SavedInsightReportResponse
-from storage.db_client import build_source_items, fetch_latest_insight_report, resolve_source_references
+from storage.db_client import (
+    build_source_items,
+    fetch_latest_insight_report,
+    resolve_source_references,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

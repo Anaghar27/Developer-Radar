@@ -2,8 +2,8 @@
 
 import logging
 import os
-from urllib.parse import parse_qs, urlparse
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import psycopg2
 from psycopg2 import extras

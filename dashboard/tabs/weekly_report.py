@@ -1,8 +1,8 @@
 """Lumina — Weekly Report tab."""
 from __future__ import annotations
 
-from html import escape
 from datetime import datetime, timedelta
+from html import escape
 
 import pandas as pd
 import plotly.express as px

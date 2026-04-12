@@ -78,7 +78,7 @@ def _parse_response(raw: str) -> dict | None:
         return None
 
     score = parsed.get("controversy_score")
-    if isinstance(score, (int, float)) and not (0 <= score <= 10):
+    if isinstance(score, int | float) and not (0 <= score <= 10):
         logger.warning("controversy_score out of range [0, 10]: %s", score)
         return None
 

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from html import escape
 from io import BytesIO
-import re
 
 import pandas as pd
 import plotly.express as px

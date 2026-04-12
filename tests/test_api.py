@@ -134,10 +134,12 @@ def test_posts_requires_auth(client):
 
 
 def test_posts_with_auth(client, auth_token):
-    with patch("api.routes.posts.duckdb.connect") as mock_conn:
-        mock_conn.return_value.execute.return_value.fetchone.return_value = [0]
-        mock_conn.return_value.execute.return_value.fetchall.return_value = []
-        mock_conn.return_value.close = MagicMock()
+    with patch("api.routes.posts.connect_duckdb_with_postgres") as mock_connect:
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value.fetchone.return_value = [0]
+        mock_conn.execute.return_value.fetchall.return_value = []
+        mock_conn.close = MagicMock()
+        mock_connect.return_value = mock_conn
         response = client.get("/posts", headers={"Authorization": f"Bearer {auth_token}"})
     assert response.status_code == 200
     body = response.json()
@@ -350,7 +352,7 @@ def test_pagination_next_offset_is_correct(client, auth_token):
     """
     # total=100, offset=10, limit=20 → has_more=True, next_offset=30
     with patch("api.routes.posts.duckdb_available", return_value=True), \
-         patch("api.routes.posts.duckdb.connect") as mock_connect:
+         patch("api.routes.posts.connect_duckdb_with_postgres") as mock_connect:
         mock_conn = MagicMock()
         mock_count_result = MagicMock()
         mock_count_result.fetchone.return_value = [100]
@@ -377,7 +379,7 @@ def test_pagination_no_more_pages(client, auth_token):
     """
     # total=25, offset=20, limit=10 → (20+10)=30 >= 25 → last page
     with patch("api.routes.posts.duckdb_available", return_value=True), \
-         patch("api.routes.posts.duckdb.connect") as mock_connect:
+         patch("api.routes.posts.connect_duckdb_with_postgres") as mock_connect:
         mock_conn = MagicMock()
         mock_count_result = MagicMock()
         mock_count_result.fetchone.return_value = [25]
@@ -402,7 +404,7 @@ def test_pagination_no_more_pages(client, auth_token):
 def test_posts_source_filter(client, auth_token):
     """Source filter is accepted without errors."""
     with patch("api.routes.posts.duckdb_available", return_value=True), \
-         patch("api.routes.posts.duckdb.connect") as mock_connect:
+         patch("api.routes.posts.connect_duckdb_with_postgres") as mock_connect:
         mock_conn = MagicMock()
         mock_count_result = MagicMock()
         mock_count_result.fetchone.return_value = [0]

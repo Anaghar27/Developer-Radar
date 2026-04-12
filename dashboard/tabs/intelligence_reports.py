@@ -1,5 +1,5 @@
 """Lumina — Intelligence Reports tab."""
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 import pandas as pd
 import streamlit as st

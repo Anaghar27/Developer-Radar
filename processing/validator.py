@@ -96,7 +96,7 @@ def validate_post(message: dict) -> tuple[bool, str]:
 
     if "score" in message:
         score = message.get("score")
-        if not isinstance(score, (int, float)) or isinstance(score, bool):
+        if not isinstance(score, int | float) or isinstance(score, bool):
             error_reason = f"score must be an integer or float, got {type(score).__name__}"
             logger.warning(error_reason)
             return False, error_reason
