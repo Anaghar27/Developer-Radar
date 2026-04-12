@@ -6,6 +6,9 @@ from dashboard.api_client import api_get
 from dashboard.components.charts import filters_label, metric_row, section_header
 from dashboard.components.filters import sentiment_filter, source_filter, topic_filter
 
+API_MAX_POSTS = 1000
+PAGE_SIZE = 10
+
 # Sentiment badge HTML
 _SENT_BADGE = {
     "positive": '<span style="display:inline-block;padding:2px 10px;border-radius:50px;'
@@ -17,6 +20,15 @@ _SENT_BADGE = {
     "neutral":  '<span style="display:inline-block;padding:2px 10px;border-radius:50px;'
                 'background:rgba(148,163,184,.10);border:1px solid rgba(148,163,184,.2);'
                 'color:#94A3B8;font-size:.72rem;font-weight:700">neutral</span>',
+}
+
+_DISPLAY_LABELS = {
+    "title": "Title",
+    "source": "Source",
+    "sentiment": "Sentiment",
+    "emotion": "Emotion",
+    "topic": "Topic",
+    "tool_mentioned": "Tool Mentioned",
 }
 
 
@@ -37,10 +49,31 @@ def render() -> None:
     with col3:
         sentiment = sentiment_filter("lf_sentiment")
     with col4:
-        limit = st.number_input("Max posts", min_value=10, max_value=1000, value=50, step=10)
+        current_limit = int(st.session_state.get("lf_limit", 50))
+        if current_limit > API_MAX_POSTS:
+            st.session_state["lf_limit"] = API_MAX_POSTS
+        elif current_limit < 10:
+            st.session_state["lf_limit"] = 10
 
-    PAGE_SIZE = 10
-    filter_signature = (source, topic, sentiment, int(limit))
+        limit = st.number_input(
+            "Max posts",
+            min_value=10,
+            max_value=API_MAX_POSTS,
+            value=50,
+            step=10,
+            key="lf_limit",
+        )
+
+    max_rows = min(int(limit), API_MAX_POSTS)
+    if int(limit) > API_MAX_POSTS:
+        st.warning(
+            f"Max posts is capped at {API_MAX_POSTS} by the API. "
+            "Reduce the value or load more through paging."
+        )
+        st.session_state["lf_limit"] = API_MAX_POSTS
+        max_rows = API_MAX_POSTS
+
+    filter_signature = (source, topic, sentiment, max_rows)
     if st.session_state.get("lf_filters") != filter_signature:
         st.session_state["lf_page"] = 0
         st.session_state["lf_filters"] = filter_signature
@@ -48,7 +81,6 @@ def render() -> None:
         st.session_state.pop("lf_total_available", None)
 
     page = st.session_state.get("lf_page", 0)
-    max_rows = int(limit)
 
     # ── Fetch all posts up to max_rows (cached per filter signature) ──────────
     # Stats are computed over the full set; the table is paginated client-side.
@@ -84,14 +116,16 @@ def render() -> None:
     pos       = len(full_df[full_df["sentiment"] == "positive"])  if "sentiment" in full_df.columns else 0
     neu       = len(full_df[full_df["sentiment"] == "neutral"])   if "sentiment" in full_df.columns else 0
     neg       = len(full_df[full_df["sentiment"] == "negative"])  if "sentiment" in full_df.columns else 0
+    uncls     = total_rows - (pos + neu + neg)
     avg_contr = full_df["controversy_score"].mean()                if "controversy_score" in full_df.columns else 0
 
     metric_row([
         {"label": "Total in DB",     "value": f"{total_available:,}"},
-        {"label": "Max Posts",       "value": f"{total_rows:,}"},
+        {"label": "Loaded Posts",    "value": f"{total_rows:,}"},
         {"label": "Positive",        "value": pos},
         {"label": "Neutral",         "value": neu},
         {"label": "Negative",        "value": neg},
+        {"label": "Unclassified",    "value": uncls},
         {"label": "Avg Controversy", "value": f"{avg_contr:.2f}"},
     ])
 
@@ -100,13 +134,20 @@ def render() -> None:
     # ── Posts table with client-side pagination ───────────────────────────────
     display_cols = ["title", "source", "sentiment", "emotion", "topic", "tool_mentioned", "score"]
     available = [c for c in display_cols if c in full_df.columns]
+    score_label = "Score"
+    if source == "reddit":
+        score_label = "Post Upvotes"
+    elif source == "hackernews":
+        score_label = "Points"
+    elif source in (None, "All"):
+        score_label = "Upvotes / Points"
     start = page * PAGE_SIZE
     end = min(start + PAGE_SIZE, total_rows)
     page_df = full_df[available].iloc[start:end]
 
     # Build table HTML
     header_html = "".join(
-        f'<th class="dp-tbl-th">{col.replace("_", " ")}</th>'
+        f'<th class="dp-tbl-th">{score_label if col == "score" else _DISPLAY_LABELS.get(col, col.replace("_", " "))}</th>'
         for col in available
     )
     rows_html = ""
@@ -142,6 +183,12 @@ def render() -> None:
             st.session_state["lf_page"] = page - 1
             st.rerun()
     with info_col:
+        if total_available > total_rows and page >= total_pages - 1:
+            remaining = total_available - total_rows
+            st.info(
+                f"You've reached the last loaded page. "
+                f"Increase Max posts to load more results ({remaining:,} more available)."
+            )
         st.markdown(
             f'<div class="dp-tbl-footer">'
             f'<span class="dp-tbl-page-info">'

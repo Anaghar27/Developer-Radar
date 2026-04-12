@@ -41,18 +41,18 @@ def auth_token(client):
     with patch("api.auth.router.fetch_user_by_email", return_value=None), \
          patch("api.auth.router.insert_user", return_value=1):
         client.post("/auth/register", json={
-            "email": "testuser@devpulse.com",
+            "email": "testuser@developerradar.com",
             "password": "Testpass123!",
         })
 
     with patch("api.auth.router.fetch_user_by_email", return_value={
         "id": 1,
-        "email": "testuser@devpulse.com",
+        "email": "testuser@developerradar.com",
         "hashed_password": "$2b$12$placeholder_hash",
         "is_active": True,
     }), patch("api.auth.router.verify_password", return_value=True):
         response = client.post("/auth/token", json={
-            "email": "testuser@devpulse.com",
+            "email": "testuser@developerradar.com",
             "password": "Testpass123!",
         })
     return response.json()["access_token"]
@@ -83,7 +83,7 @@ def test_register_user(client):
          patch("api.auth.router.create_verification_token"), \
          patch("api.auth.router.send_verification_email", return_value=False):
         response = client.post("/auth/register", json={
-            "email": "newuser@devpulse.com",
+            "email": "newuser@developerradar.com",
             "password": "Securepass123!",
         })
     assert response.status_code == 201
@@ -93,12 +93,12 @@ def test_register_user(client):
 def test_login(client):
     with patch("api.auth.router.fetch_user_by_email", return_value={
         "id": 1,
-        "email": "test@devpulse.com",
+        "email": "test@developerradar.com",
         "hashed_password": "hashed",
         "is_active": True,
     }), patch("api.auth.router.verify_password", return_value=True):
         response = client.post("/auth/token", json={
-            "email": "test@devpulse.com",
+            "email": "test@developerradar.com",
             "password": "testpass123",
         })
     assert response.status_code == 200
@@ -108,12 +108,12 @@ def test_login(client):
 def test_login_wrong_password(client):
     with patch("api.auth.router.fetch_user_by_email", return_value={
         "id": 1,
-        "email": "test@devpulse.com",
+        "email": "test@developerradar.com",
         "hashed_password": "hashed",
         "is_active": True,
     }), patch("api.auth.router.verify_password", return_value=False):
         response = client.post("/auth/token", json={
-            "email": "test@devpulse.com",
+            "email": "test@developerradar.com",
             "password": "wrongpass",
         })
     assert response.status_code == 401
@@ -170,10 +170,10 @@ def test_cache_invalidate_requires_api_key(client):
 def test_forgot_password_dev_mode_returns_token(client):
     """When SMTP is not configured, reset token is returned directly in the response."""
     with patch("api.auth.router.fetch_user_by_email", return_value={
-        "id": 1, "email": "user@devpulse.com", "is_active": True,
+        "id": 1, "email": "user@developerradar.com", "is_active": True,
     }), patch("api.auth.router.create_reset_token"), \
        patch("api.auth.router.send_reset_email", return_value=False):
-        response = client.post("/auth/forgot-password", json={"email": "user@devpulse.com"})
+        response = client.post("/auth/forgot-password", json={"email": "user@developerradar.com"})
 
     assert response.status_code == 200
     body = response.json()
@@ -185,10 +185,10 @@ def test_forgot_password_dev_mode_returns_token(client):
 def test_forgot_password_smtp_configured_no_token_in_response(client):
     """When SMTP is configured and email is sent, reset token is NOT returned in the response."""
     with patch("api.auth.router.fetch_user_by_email", return_value={
-        "id": 1, "email": "user@devpulse.com", "is_active": True,
+        "id": 1, "email": "user@developerradar.com", "is_active": True,
     }), patch("api.auth.router.create_reset_token"), \
        patch("api.auth.router.send_reset_email", return_value=True):
-        response = client.post("/auth/forgot-password", json={"email": "user@devpulse.com"})
+        response = client.post("/auth/forgot-password", json={"email": "user@developerradar.com"})
 
     assert response.status_code == 200
     assert response.json()["otp_sent"] is True
@@ -209,9 +209,9 @@ def test_forgot_password_unknown_email_returns_200(client):
 def test_forgot_password_inactive_account_returns_200(client):
     """Inactive account behaves the same as unknown email — no token, no OTP flow."""
     with patch("api.auth.router.fetch_user_by_email", return_value={
-        "id": 2, "email": "inactive@devpulse.com", "is_active": False,
+        "id": 2, "email": "inactive@developerradar.com", "is_active": False,
     }):
-        response = client.post("/auth/forgot-password", json={"email": "inactive@devpulse.com"})
+        response = client.post("/auth/forgot-password", json={"email": "inactive@developerradar.com"})
 
     assert response.status_code == 200
     assert response.json()["otp_sent"] is False

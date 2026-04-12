@@ -31,7 +31,7 @@ def get_consumer() -> KafkaConsumer:
     return KafkaConsumer(
         RAW_POSTS_TOPIC,
         bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
-        group_id="devpulse_consumer_group",
+        group_id="developer_radar_consumer_group",
         auto_offset_reset="earliest",
         enable_auto_commit=True,
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
@@ -264,7 +264,7 @@ def consume_failed_events(ingest_batch_id: str) -> int:
     dl_consumer = KafkaConsumer(
         "failed_events",
         bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
-        group_id="devpulse_dead_letter_group",
+        group_id="developer_radar_dead_letter_group",
         auto_offset_reset="earliest",
         enable_auto_commit=True,
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),

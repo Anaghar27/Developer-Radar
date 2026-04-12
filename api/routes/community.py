@@ -7,12 +7,12 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from api.auth.dependencies import get_current_user
 from api.cache.redis_client import cache_get, cache_set, make_cache_key
-from api.schemas import CommunityDivergenceResponse, CommunityListResponse
+from api.schemas import CommunityDivergenceResponse, CommunityListResponse, DataWindowResponse
 from api.utils import duckdb_available
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-DUCKDB_PATH = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
+DUCKDB_PATH = os.getenv("DBT_DUCKDB_PATH", "transform/developer_radar.duckdb")
 
 
 @router.get("/community/divergence", response_model=CommunityListResponse, tags=["data"])
@@ -72,5 +72,66 @@ async def get_community_divergence(
         data = []
 
     result = CommunityListResponse(data=data)
+    await cache_set(redis, cache_key, result.model_dump())
+    return result
+
+
+@router.get("/community/window", response_model=DataWindowResponse, tags=["data"])
+async def get_community_window(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Return the available community-comparison date window so the dashboard can
+    cap lookback controls to the actual history present in the warehouse.
+    """
+    cache_key = make_cache_key("community_window")
+    redis = request.app.state.redis
+
+    cached = await cache_get(redis, cache_key)
+    if cached:
+        return DataWindowResponse(**cached)
+
+    if not duckdb_available():
+        result = DataWindowResponse(
+            earliest_post_date=None,
+            latest_post_date=None,
+            max_lookback_days=1,
+        )
+        return result
+
+    try:
+        conn = duckdb.connect(DUCKDB_PATH, read_only=True)
+        earliest_post_date, latest_post_date = conn.execute(
+            """
+            SELECT
+                MIN(post_date)::date AS earliest_post_date,
+                MAX(post_date)::date AS latest_post_date
+            FROM mart_community_divergence
+            """
+        ).fetchone()
+        conn.close()
+
+        if earliest_post_date is None or latest_post_date is None:
+            result = DataWindowResponse(
+                earliest_post_date=None,
+                latest_post_date=None,
+                max_lookback_days=1,
+            )
+        else:
+            max_lookback_days = max(1, (latest_post_date - earliest_post_date).days + 1)
+            result = DataWindowResponse(
+                earliest_post_date=earliest_post_date,
+                latest_post_date=latest_post_date,
+                max_lookback_days=max_lookback_days,
+            )
+    except Exception as e:
+        logger.error(f"DuckDB community window query failed: {e}")
+        result = DataWindowResponse(
+            earliest_post_date=None,
+            latest_post_date=None,
+            max_lookback_days=1,
+        )
+
     await cache_set(redis, cache_key, result.model_dump())
     return result

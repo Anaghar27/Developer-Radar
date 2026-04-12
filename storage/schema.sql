@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS insight_reports (
     id SERIAL PRIMARY KEY,
     query TEXT UNIQUE,
     report_text TEXT,
+    formatted_report_text TEXT,
+    report_pdf BYTEA,
     -- NOTE: sources_used is a PostgreSQL array — denormalized from strict 1NF.
     -- The normalized form would be a child table (insight_report_sources).
     -- Array chosen deliberately: sources are always fetched together with
@@ -119,7 +121,7 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     -- NOTE: error_rate is a denormalized derived field:
     --   error_rate = posts_failed / NULLIF(posts_ingested, 0)
     -- Stored explicitly (violates strict 3NF) for Prometheus scraping —
-    -- devpulse_classification_error_rate gauge reads this directly.
+    -- developer_radar_classification_error_rate gauge reads this directly.
     -- Alerts fire when error_rate > 0.10 (10%).
     error_rate       NUMERIC(5,4) NOT NULL DEFAULT 0.0,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()

@@ -17,7 +17,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: developer_intelligence
+          POSTGRES_DB: developer_radar
         ports:
           - 5432:5432
         options: >-
@@ -29,7 +29,7 @@ jobs:
     env:
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
-      POSTGRES_DB: developer_intelligence
+      POSTGRES_DB: developer_radar
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -37,12 +37,12 @@ jobs:
       OPENROUTER_MODEL: nvidia/llama-3.1-nemotron-ultra-253b-v1:free
       REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
       REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
-      REDDIT_USER_AGENT: devpulse/1.0
+      REDDIT_USER_AGENT: developer_radar/1.0
       JWT_SECRET_KEY: ci-test-secret-key-not-for-production
       INTERNAL_API_KEY: ci-test-internal-key
       KAFKA_BOOTSTRAP_SERVERS: localhost:9092
       REDIS_URL: redis://localhost:6379/0
-      DBT_DUCKDB_PATH: transform/devpulse.duckdb
+      DBT_DUCKDB_PATH: transform/developer_radar.duckdb
       API_BASE_URL: http://localhost:8000
 
     steps:
@@ -61,12 +61,12 @@ jobs:
         run: uv pip install -r requirements.txt --system
 
       - name: Enable pgvector extension
-        run: psql -h localhost -U postgres -d developer_intelligence -c "CREATE EXTENSION IF NOT EXISTS vector;"
+        run: psql -h localhost -U postgres -d developer_radar -c "CREATE EXTENSION IF NOT EXISTS vector;"
         env:
           PGPASSWORD: postgres
 
       - name: Apply database schema
-        run: psql -h localhost -U postgres -d developer_intelligence -f storage/schema.sql
+        run: psql -h localhost -U postgres -d developer_radar -f storage/schema.sql
         env:
           PGPASSWORD: postgres
 

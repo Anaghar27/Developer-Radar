@@ -18,6 +18,7 @@ from api.routes.community import router as community_router
 from api.routes.health import router as health_router
 from api.routes.posts import router as posts_router
 from api.routes.query import router as query_router
+from api.routes.reports import router as reports_router
 from api.routes.tools import router as tools_router
 from api.routes.trends import router as trends_router
 from api.utils import duckdb_available
@@ -35,14 +36,14 @@ async def lifespan(app: FastAPI):
     """Startup: create asyncpg pool + Redis connection. Shutdown: close both."""
     # Startup
     validate_config()
-    logger.info("Starting DevPulse API...")
+    logger.info("Starting Developer Radar API...")
 
     # asyncpg connection pool
     try:
         app.state.db_pool = await asyncpg.create_pool(
             host=os.getenv("POSTGRES_HOST", "localhost"),
             port=int(os.getenv("POSTGRES_PORT", "5432")),
-            database=os.getenv("POSTGRES_DB", "developer_intelligence"),
+            database=os.getenv("POSTGRES_DB", "developer_radar"),
             user=os.getenv("POSTGRES_USER", "postgres"),
             password=os.getenv("POSTGRES_PASSWORD", "postgres"),
             min_size=2,
@@ -68,13 +69,13 @@ async def lifespan(app: FastAPI):
     if app.state.db_pool is not None:
         await app.state.db_pool.close()
     await close_redis(app)
-    logger.info("DevPulse API shutdown complete")
+    logger.info("Developer Radar API shutdown complete")
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="DevPulse API",
+    title="Developer Radar API",
     description="Real-time developer sentiment intelligence platform",
     version="1.0.0",
     lifespan=lifespan,
@@ -102,6 +103,7 @@ app.include_router(tools_router)
 app.include_router(community_router)
 app.include_router(alerts_router)
 app.include_router(query_router)
+app.include_router(reports_router)
 
 @app.get("/ping")
 @limiter.limit("60/minute")
@@ -111,7 +113,7 @@ async def ping(request: Request):
     redis_ok = getattr(request.app.state, "redis", None) is not None
     return {
         "status": "ok",
-        "service": "devpulse-api",
+        "service": "developer-radar-api",
         "version": app.version,
         "db_connected": db_ok,
         "redis_connected": redis_ok,

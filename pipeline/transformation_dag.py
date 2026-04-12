@@ -3,12 +3,13 @@ import os
 import subprocess
 from datetime import UTC, datetime, timezone
 
+import duckdb
 from airflow import DAG
 from airflow.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.sensors.external_task import ExternalTaskSensor
 
 default_args = {
-    "owner": "devpulse",
+    "owner": "developer_radar",
     "retries": 1,
     "retry_delay": 300,
 }
@@ -20,7 +21,7 @@ dag = DAG(
     start_date=datetime(2024, 1, 1, tzinfo=UTC),
     catchup=False,
     is_paused_upon_creation=False,
-    tags=["devpulse", "transformation"],
+    tags=["developer_radar", "transformation"],
 )
 
 def _ingestion_execution_date(execution_date, **kwargs):
@@ -210,15 +211,54 @@ is_sunday_task = ShortCircuitOperator(
 def _weekly_report(**context):
     """Generate weekly insight report via Corrective RAG every Sunday."""
     from rag.corrective_rag import run_corrective_rag
+    from rag.report_formatter import format_report_for_presentation
+    from reporting.weekly_report_export import build_pdf_chart_figures, render_weekly_report_pdf
     from storage.db_client import insert_insight_report
 
     query = "What are the key developer sentiment trends and tool discussions from the past week?"
     try:
         result = run_corrective_rag(query, limit=15)
+        source_items = [{"label": src, "url": src} for src in result.get("sources_used", [])]
+        formatted_report = format_report_for_presentation(
+            report_text=result["report"],
+            query=query,
+            source_items=source_items,
+        )
+        duckdb_path = os.getenv("DBT_DUCKDB_PATH", "transform/developer_radar.duckdb")
+        conn = duckdb.connect(duckdb_path, read_only=True)
+        try:
+            trends_df = conn.execute(
+                """
+                SELECT
+                    post_date::date AS post_date,
+                    topic,
+                    post_count,
+                    avg_sentiment
+                FROM mart_daily_sentiment
+                WHERE post_date >= current_date - INTERVAL 7 DAY
+                ORDER BY post_date DESC
+                """
+            ).df()
+        finally:
+            conn.close()
+        pdf_bytes = render_weekly_report_pdf(
+            {
+                "query": query,
+                "report_text": result["report"],
+                "formatted_report_text": formatted_report,
+                "generated_at": result["generated_at"].isoformat()
+                if hasattr(result["generated_at"], "isoformat")
+                else result["generated_at"],
+            },
+            source_items,
+            build_pdf_chart_figures(trends_df),
+        )
         insert_insight_report(
             query=query,
             report_text=result["report"],
             sources=result["sources_used"],
+            formatted_report_text=formatted_report,
+            report_pdf=pdf_bytes,
         )
         logging.info(f"Weekly report generated: {result['report'][:200]}...")
     except Exception as e:

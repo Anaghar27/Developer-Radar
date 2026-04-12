@@ -1,7 +1,7 @@
-# DevPulse dbt Project
+# Developer Radar dbt Project
 
 ## Overview
-dbt transformation layer for DevPulse — reads from PostgreSQL operational store,
+dbt transformation layer for Developer Radar — reads from PostgreSQL operational store,
 models data into DuckDB analytical warehouse.
 
 ## Model Layers

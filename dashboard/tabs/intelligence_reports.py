@@ -1,4 +1,6 @@
 """Lumina — Intelligence Reports tab."""
+from urllib.parse import urlparse, parse_qs
+
 import pandas as pd
 import streamlit as st
 
@@ -12,6 +14,19 @@ _SUGGESTIONS = [
     "Which AI tools are generating the most excitement?",
     "What career topics are trending in the developer community?",
 ]
+
+
+def _source_label(src: str) -> str:
+    if not src.startswith("http"):
+        return src
+
+    parsed = urlparse(src)
+    if "news.ycombinator.com" in parsed.netloc:
+        item_id = parse_qs(parsed.query).get("id", [""])[0]
+        return f"Hacker News item #{item_id}" if item_id else "Hacker News item"
+
+    last_segment = parsed.path.rstrip("/").split("/")[-1]
+    return last_segment or parsed.netloc
 
 
 def _run_query(query: str, limit: int) -> None:
@@ -87,12 +102,15 @@ def render() -> None:
             "referring to the source URLs listed below."
         )
 
+        source_items = result.get("source_items") or []
         sources = result.get("sources_used", [])
-        if sources:
-            st.markdown(f"**Sources ({len(sources)})**")
+        display_sources = source_items or [{"label": _source_label(src), "url": src} for src in sources]
+        if display_sources:
+            st.markdown(f"**Sources ({len(display_sources)})**")
             rows = ""
-            for i, src in enumerate(sources, 1):
-                label = src if not src.startswith("http") else (src.split("/")[-1][:40] or src)
+            for i, item in enumerate(display_sources, 1):
+                label = item.get("label") or _source_label(item.get("url", ""))
+                src = item.get("url", "")
                 link = (
                     f'<a href="{src}" target="_blank" rel="noopener">{label}</a>'
                     if src.startswith("http")
@@ -111,7 +129,7 @@ def render() -> None:
                 "query":         result.get("query"),
                 "generated_at":  result.get("generated_at"),
                 "cached":        result.get("cached"),
-                "sources_count": len(sources),
+                "sources_count": len(display_sources),
             })
 
     # ── Volume spike alerts ───────────────────────────────────────────────────

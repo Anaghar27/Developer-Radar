@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 PIPELINE_BATCH_SIZE = 1000
 
 default_args = {
-    "owner": "devpulse",
+    "owner": "developer_radar",
     "retries": 1,
     "retry_delay": timedelta(seconds=300),
 }
@@ -42,7 +42,7 @@ dag = DAG(
     schedule_interval="0 */6 * * *",
     start_date=datetime(2024, 1, 1, tzinfo=UTC),
     catchup=False,
-    tags=["devpulse", "ingestion"],
+    tags=["developer_radar", "ingestion"],
 )
 
 

@@ -1,5 +1,5 @@
 """
-LLM usage tracker for DevPulse.
+LLM usage tracker for Developer Radar.
 
 Tracks every LLM call across classification, RAG grading,
 insight generation, and query expansion.

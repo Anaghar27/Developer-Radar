@@ -23,12 +23,22 @@ def render() -> None:
     # ── Filters ───────────────────────────────────────────────────────────────
     filters_label()
     col1, col2, col3 = st.columns(3)
+    window = api_get("/trends/window") or {}
+    max_lookback_days = max(1, int(window.get("max_lookback_days", 1)))
+    if "tr_days" in st.session_state and int(st.session_state["tr_days"]) > max_lookback_days:
+        st.session_state["tr_days"] = max_lookback_days
     with col1:
         topic = topic_filter("tr_topic")
     with col2:
         source = source_filter("tr_source")
     with col3:
-        days = days_filter("tr_days", default=28)
+        days = days_filter(
+            "tr_days",
+            default=min(28, max_lookback_days),
+            min_value=1,
+            max_value=max_lookback_days,
+            step=1,
+        )
 
     params: dict = {"days": days}
     if topic:

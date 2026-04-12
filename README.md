@@ -1,6 +1,6 @@
-# DevPulse Platform
+# Developer Radar Platform
 
-DevPulse is an end-to-end developer intelligence platform that ingests discussions from Reddit and Hacker News, classifies them with LLMs, builds analytical marts with dbt, and serves the results through a FastAPI backend and a Streamlit dashboard.
+Developer Radar is an end-to-end developer intelligence platform that ingests discussions from Reddit and Hacker News, classifies them with LLMs, builds analytical marts with dbt, and serves the results through a FastAPI backend and a Streamlit dashboard.
 
 It is structured like a production-style data product rather than a single app: ingestion, enrichment, storage, transformation, retrieval, APIs, and UI are separate layers connected by scheduled workflows.
 
@@ -297,7 +297,7 @@ pytest
 
 Live dbt docs are published on every push to `main`:
 
-https://anaghar27.github.io/Devpulse-Platform/
+https://anaghar27.github.io/Developer-Radar/
 
 They include lineage, model descriptions, and test coverage for the transformation layer.
 
@@ -313,4 +313,4 @@ The project intentionally separates concerns:
 - Streamlit provides a fast way to surface intelligence to end users.
 - Corrective RAG adds grounded narrative reporting on top of the same underlying data.
 
-In short: DevPulse is not just a dashboard. It is a scheduled developer-intelligence pipeline with a serving layer on top.
+In short: Developer Radar is not just a dashboard. It is a scheduled developer-intelligence pipeline with a serving layer on top.

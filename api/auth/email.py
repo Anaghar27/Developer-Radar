@@ -26,17 +26,17 @@ def send_reset_email(to_email: str, token: str) -> bool:
     msg = MIMEMultipart("alternative")
     msg["From"] = from_email
     msg["To"] = to_email
-    msg["Subject"] = "Your DevPulse password reset OTP"
+    msg["Subject"] = "Your Developer Radar password reset OTP"
 
     plain = (
         f"Hi,\n\n"
-        f"We received a request to reset the password for your DevPulse account.\n\n"
+        f"We received a request to reset the password for your Developer Radar account.\n\n"
         f"Your one-time password (OTP) is:\n\n"
         f"  {token}\n\n"
         f"This OTP expires in 15 minutes. Enter it on the Reset Password screen to set a new password.\n\n"
         f"If you didn't request this, no action is needed — your account is safe.\n\n"
         f"Thanks,\n"
-        f"The DevPulse Team"
+        f"The Developer Radar Team"
     )
 
     html = f"""\
@@ -53,7 +53,7 @@ def send_reset_email(to_email: str, token: str) -> bool:
             <tr>
               <td style="background:#1a1a2e;padding:28px 32px;">
                 <p style="margin:0;font-size:22px;font-weight:700;color:#ffffff;
-                           letter-spacing:1px;">📡 DevPulse</p>
+                           letter-spacing:1px;">📡 Developer Radar</p>
                 <p style="margin:4px 0 0;font-size:12px;color:#a0aec0;">
                   Real-Time Developer Sentiment Intelligence
                 </p>
@@ -67,7 +67,7 @@ def send_reset_email(to_email: str, token: str) -> bool:
                   Password Reset Request
                 </p>
                 <p style="margin:0 0 24px;font-size:14px;color:#4a5568;line-height:1.6;">
-                  We received a request to reset the password for your DevPulse account.
+                  We received a request to reset the password for your Developer Radar account.
                   Use the OTP below to proceed.
                 </p>
 
@@ -109,7 +109,7 @@ def send_reset_email(to_email: str, token: str) -> bool:
                 <p style="margin:0;font-size:12px;color:#a0aec0;line-height:1.6;">
                   If you didn't request a password reset, you can safely ignore this email —
                   your account remains secure.<br><br>
-                  &copy; DevPulse
+                  &copy; Developer Radar
                 </p>
               </td>
             </tr>
@@ -157,17 +157,17 @@ def send_verification_email(to_email: str, token: str) -> bool:
     msg = MIMEMultipart("alternative")
     msg["From"] = from_email
     msg["To"] = to_email
-    msg["Subject"] = "Verify your DevPulse email"
+    msg["Subject"] = "Verify your Developer Radar email"
 
     plain = (
         f"Hi,\n\n"
-        f"We received a request to verify your email address for your DevPulse account.\n\n"
+        f"We received a request to verify your email address for your Developer Radar account.\n\n"
         f"Your one-time password (OTP) is:\n\n"
         f"  {token}\n\n"
         f"This OTP expires in 5 minutes. Enter it on the Verify Email screen to verify your email address.\n\n"
-        f"If you didn't create a DevPulse account, you can safely ignore this email.\n\n"
+        f"If you didn't create a Developer Radar account, you can safely ignore this email.\n\n"
         f"Thanks,\n"
-        f"The DevPulse Team"
+        f"The Developer Radar Team"
     )
 
     html = f"""\
@@ -184,7 +184,7 @@ def send_verification_email(to_email: str, token: str) -> bool:
             <tr>
               <td style="background:#1a1a2e;padding:28px 32px;">
                 <p style="margin:0;font-size:22px;font-weight:700;color:#ffffff;
-                           letter-spacing:1px;">📡 DevPulse</p>
+                           letter-spacing:1px;">📡 Developer Radar</p>
                 <p style="margin:4px 0 0;font-size:12px;color:#a0aec0;">
                   Real-Time Developer Sentiment Intelligence
                 </p>
@@ -198,7 +198,7 @@ def send_verification_email(to_email: str, token: str) -> bool:
                   Email Verification
                 </p>
                 <p style="margin:0 0 24px;font-size:14px;color:#4a5568;line-height:1.6;">
-                  We received a request to verify your email address for your DevPulse account.
+                  We received a request to verify your email address for your Developer Radar account.
                   Use the OTP below to proceed.
                 </p>
 
@@ -238,8 +238,8 @@ def send_verification_email(to_email: str, token: str) -> bool:
             <tr>
               <td style="padding:20px 32px 32px;">
                 <p style="margin:0;font-size:12px;color:#a0aec0;line-height:1.6;">
-                  If you didn't create a DevPulse account, you can safely ignore this email.<br><br>
-                  &copy; DevPulse
+                  If you didn't create a Developer Radar account, you can safely ignore this email.<br><br>
+                  &copy; Developer Radar
                 </p>
               </td>
             </tr>

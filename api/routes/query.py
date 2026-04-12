@@ -8,7 +8,7 @@ from api.auth.dependencies import get_current_user
 from api.cache.redis_client import RAG_TTL, cache_get, cache_set
 from api.schemas import QueryRequest, QueryResponse
 from rag.corrective_rag import make_query_hash, run_corrective_rag
-from storage.db_client import insert_insight_report
+from storage.db_client import build_source_items, insert_insight_report, resolve_source_references
 
 _FAILED_REPORT_PREFIXES = (
     "Insight generation failed",
@@ -43,7 +43,7 @@ async def query_insights(
     Note: First call for a query takes 15-60s. Subsequent calls return instantly from cache.
     """
     redis = request.app.state.redis
-    cache_key = f"devpulse:rag:v2:{make_query_hash(body.query)}"
+    cache_key = f"developer_radar:rag:v2:{make_query_hash(body.query)}"
 
     # ── Step 1: Cache hit ──────────────────────────────────────────────────────
     cached = await cache_get(redis, cache_key)
@@ -53,6 +53,8 @@ async def query_insights(
             await redis.delete(cache_key)
         else:
             logger.info(f"RAG cache hit for query: '{body.query[:60]}'")
+            cached["sources_used"] = resolve_source_references(cached.get("sources_used", []))
+            cached["source_items"] = build_source_items(cached.get("sources_used", []))
             cached["cached"] = True
             return QueryResponse(**cached)
 
@@ -73,6 +75,7 @@ async def query_insights(
 
     report = result["report"]
     report_failed = _is_failed_report(report)
+    resolved_sources = resolve_source_references(result["sources_used"])
 
     # ── Step 3: Persist to PostgreSQL — only on success ───────────────────────
     if not report_failed:
@@ -80,7 +83,7 @@ async def query_insights(
             insert_insight_report(
                 query=body.query,
                 report_text=report,
-                sources=result["sources_used"],
+                sources=resolved_sources,
             )
         except Exception as e:
             logger.warning(f"Failed to persist insight report: {e}")
@@ -91,7 +94,8 @@ async def query_insights(
     payload = {
         "query": result["query"],
         "report": report,
-        "sources_used": result["sources_used"],
+        "sources_used": resolved_sources,
+        "source_items": build_source_items(resolved_sources),
         "generated_at": result["generated_at"].isoformat()
         if isinstance(result["generated_at"], datetime)
         else result["generated_at"],

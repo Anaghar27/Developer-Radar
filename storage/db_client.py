@@ -2,12 +2,34 @@
 
 import logging
 import os
+from urllib.parse import parse_qs, urlparse
 from typing import Any
 
 import psycopg2
 from psycopg2 import extras
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_insight_reports_report_columns() -> None:
+    """Backfill optional saved-report columns for existing local databases."""
+    sql = """
+        ALTER TABLE insight_reports
+        ADD COLUMN IF NOT EXISTS formatted_report_text TEXT
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+                cur.execute(
+                    """
+                    ALTER TABLE insight_reports
+                    ADD COLUMN IF NOT EXISTS report_pdf BYTEA
+                    """
+                )
+    except psycopg2.Error:
+        logger.exception("Failed to ensure saved report columns exist on insight_reports")
+        raise
 
 
 def get_connection():
@@ -222,27 +244,170 @@ def upsert_daily_aggregate(record: dict) -> None:
         raise
 
 
-def insert_insight_report(query: str, report_text: str, sources: list[str]) -> None:
+def insert_insight_report(
+    query: str,
+    report_text: str,
+    sources: list[str],
+    formatted_report_text: str | None = None,
+    report_pdf: bytes | None = None,
+) -> None:
     """
     Upsert a generated insight report.
     ON CONFLICT on query hash updates the report and timestamp so repeated
     pipeline runs (e.g. after a crash before cache_set) never produce duplicate rows.
     """
     sql = """
-        INSERT INTO insight_reports (query, report_text, sources_used)
-        VALUES (%s, %s, %s)
+        INSERT INTO insight_reports (query, report_text, formatted_report_text, report_pdf, sources_used)
+        VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT (query) DO UPDATE
             SET report_text  = EXCLUDED.report_text,
+                formatted_report_text = EXCLUDED.formatted_report_text,
+                report_pdf = EXCLUDED.report_pdf,
                 sources_used = EXCLUDED.sources_used,
                 generated_at = now()
     """
     try:
+        _ensure_insight_reports_report_columns()
         with get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, (query, report_text, sources))
+                cur.execute(sql, (query, report_text, formatted_report_text, psycopg2.Binary(report_pdf) if report_pdf else None, sources))
     except psycopg2.Error:
         logger.exception("Failed to upsert insight report for query: %s", query)
         raise
+
+
+def fetch_latest_insight_report(query: str | None = None) -> dict[str, Any] | None:
+    """Return the most recent saved insight report, optionally filtered by exact query."""
+    sql = """
+        SELECT id, query, report_text, formatted_report_text, report_pdf, sources_used, generated_at
+        FROM insight_reports
+    """
+    params: tuple[Any, ...] = ()
+    if query is not None:
+        sql += " WHERE query = %s"
+        params = (query,)
+    sql += " ORDER BY generated_at DESC LIMIT 1"
+
+    try:
+        _ensure_insight_reports_report_columns()
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+                cur.execute(sql, params)
+                row = cur.fetchone()
+                return dict(row) if row else None
+    except psycopg2.Error:
+        logger.exception("Failed to fetch latest insight report for query: %s", query)
+        return None
+
+
+def resolve_source_references(sources: list[str]) -> list[str]:
+    """
+    Resolve internal `post:<post_id>` references to concrete URLs when possible.
+    Falls back to the original source string if no better link can be found.
+    """
+    if not sources:
+        return []
+
+    post_ids = [src.split("post:", 1)[1] for src in sources if src.startswith("post:")]
+    url_map: dict[str, str] = {}
+
+    if post_ids:
+        sql = """
+            SELECT id, url, source
+            FROM raw_posts
+            WHERE id = ANY(%s)
+        """
+        try:
+            with get_connection() as conn:
+                with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+                    cur.execute(sql, (post_ids,))
+                    rows = cur.fetchall()
+                    for row in rows:
+                        post_id = row["id"]
+                        url = row.get("url")
+                        source = row.get("source")
+                        if url:
+                            url_map[post_id] = url
+                        elif source == "hackernews" and str(post_id).startswith("hn_"):
+                            hn_id = str(post_id).replace("hn_", "", 1)
+                            url_map[post_id] = f"https://news.ycombinator.com/item?id={hn_id}"
+        except psycopg2.Error:
+            logger.exception("Failed to resolve source references")
+
+    resolved: list[str] = []
+    for src in sources:
+        if not src.startswith("post:"):
+            resolved.append(src)
+            continue
+        post_id = src.split("post:", 1)[1]
+        resolved.append(url_map.get(post_id, src))
+    return resolved
+
+
+def build_source_items(sources: list[str]) -> list[dict[str, str]]:
+    """
+    Build display-ready source items with URL and human-readable title.
+    Uses raw_posts.title when available.
+    """
+    if not sources:
+        return []
+
+    post_ids = [src.split("post:", 1)[1] for src in sources if src.startswith("post:")]
+    direct_urls = [src for src in sources if src.startswith("http")]
+    hn_post_ids_from_urls = []
+    for src in direct_urls:
+        parsed = urlparse(src)
+        if "news.ycombinator.com" in parsed.netloc and parsed.path == "/item":
+            item_id = parse_qs(parsed.query).get("id", [""])[0]
+            if item_id:
+                hn_post_ids_from_urls.append(f"hn_{item_id}")
+
+    meta_by_post_id: dict[str, dict[str, str]] = {}
+    meta_by_url: dict[str, dict[str, str]] = {}
+
+    all_post_ids = list(dict.fromkeys(post_ids + hn_post_ids_from_urls))
+
+    if all_post_ids or direct_urls:
+        sql = """
+            SELECT id, url, source, title
+            FROM raw_posts
+            WHERE id = ANY(%s) OR url = ANY(%s)
+        """
+        try:
+            with get_connection() as conn:
+                with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+                    cur.execute(sql, (all_post_ids or [""], direct_urls or [""]))
+                    rows = cur.fetchall()
+                    for row in rows:
+                        row_dict = dict(row)
+                        meta_by_post_id[str(row_dict["id"])] = row_dict
+                        if row_dict.get("url"):
+                            meta_by_url[str(row_dict["url"])] = row_dict
+        except psycopg2.Error:
+            logger.exception("Failed to build source items")
+
+    items: list[dict[str, str]] = []
+    for src in sources:
+        if src.startswith("post:"):
+            post_id = src.split("post:", 1)[1]
+            row = meta_by_post_id.get(post_id, {})
+            url = row.get("url") or src
+            if not row.get("url") and row.get("source") == "hackernews" and post_id.startswith("hn_"):
+                url = f"https://news.ycombinator.com/item?id={post_id.replace('hn_', '', 1)}"
+            label = row.get("title") or post_id
+            items.append({"label": label, "url": url})
+            continue
+
+        row = meta_by_url.get(src, {})
+        if not row:
+            parsed = urlparse(src)
+            if "news.ycombinator.com" in parsed.netloc and parsed.path == "/item":
+                item_id = parse_qs(parsed.query).get("id", [""])[0]
+                if item_id:
+                    row = meta_by_post_id.get(f"hn_{item_id}", {})
+        items.append({"label": row.get("title") or src, "url": src})
+
+    return items
 
 
 def fetch_unprocessed_posts(

@@ -1,4 +1,4 @@
-"""DevPulse – main Streamlit entry-point (Silver Ghost theme: mono dark + light)."""
+"""Developer Radar – main Streamlit entry-point (Silver Ghost theme: mono dark + light)."""
 import base64
 import os
 import sys
@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 st.set_page_config(
-    page_title="DevPulse",
+    page_title="Developer Radar",
     page_icon="📡",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -279,6 +279,17 @@ html *:not([data-testid="stIconMaterial"]):not(.material-symbols-rounded):not(.m
 }
 .stSelectbox [data-baseweb="select"] {
   min-height: 38px !important;
+}
+.stSelectbox svg {
+  fill: var(--t1) !important;
+  stroke: var(--t1) !important;
+  opacity: 1 !important;
+}
+.stSelectbox [aria-disabled="true"] svg,
+.stSelectbox [data-baseweb="select"][aria-disabled="true"] svg {
+  fill: var(--t2) !important;
+  stroke: var(--t2) !important;
+  opacity: 1 !important;
 }
 
 /* ── Multiselect ────────────────────────────────────────────────────────── */
@@ -556,12 +567,30 @@ hr {
 }
 .stNumberInput button {
   background: var(--surf2) !important;
-  color: var(--t2) !important;
+  color: var(--t1) !important;
   min-height: 38px !important;
   width: 36px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
+}
+.stNumberInput button svg {
+  fill: currentColor !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+.stNumberInput button:disabled,
+.stNumberInput button[disabled] {
+  background: var(--surf2) !important;
+  color: var(--t2) !important;
+  opacity: 0.72 !important;
+  cursor: not-allowed !important;
+}
+.stNumberInput button:disabled svg,
+.stNumberInput button[disabled] svg {
+  fill: currentColor !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -1169,7 +1198,7 @@ hr {
 }
 [data-testid="stColumn"]:has(.dp-theme-light-marker) [data-testid="stElementContainer"]:has(.dp-theme-button-marker) + [data-testid="stElementContainer"] .stButton > button::after {
     right: 5px !important;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Cg fill='none' stroke='%231e1a1b' stroke-linecap='round' stroke-width='3'%3E%3Cpath d='M22 5v5'/%3E%3Cpath d='M22 34v5'/%3E%3Cpath d='M5 22h5'/%3E%3Cpath d='M34 22h5'/%3E%3Cpath d='M10.4 10.4l3.5 3.5'/%3E%3Cpath d='M30.1 30.1l3.5 3.5'/%3E%3Cpath d='M33.6 10.4l-3.5 3.5'/%3E%3Cpath d='M13.9 30.1l-3.5 3.5'/%3E%3C/g%3E%3Ccircle cx='22' cy='22' r='8.2' fill='%231e1a1b'/%3E%3C/svg%3E") !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Cg fill='%231e1a1b'%3E%3Cpath d='M15 8c-1.4 4.1.1 8.6 3.6 11.3 3.5 2.8 8.3 3.3 12.3 1.5-1.3 2.7-3.7 4.8-6.8 5.6-5.8 1.6-11.8-1.8-13.4-7.6C9.4 13 11.2 9.3 15 8Z'/%3E%3Ccircle cx='24' cy='12' r='1.4'/%3E%3Ccircle cx='29.5' cy='16.5' r='1.1'/%3E%3Ccircle cx='23.5' cy='20.5' r='1.1'/%3E%3Ccircle cx='33.5' cy='22.5' r='1.2'/%3E%3Ccircle cx='18' cy='18' r='0.9'/%3E%3C/g%3E%3C/svg%3E") !important;
 }
 [data-testid="stColumn"]:has(.dp-theme-dark-marker) [data-testid="stElementContainer"]:has(.dp-theme-button-marker) + [data-testid="stElementContainer"] .stButton > button::before {
     left: 23px !important;
@@ -1178,7 +1207,7 @@ hr {
 }
 [data-testid="stColumn"]:has(.dp-theme-dark-marker) [data-testid="stElementContainer"]:has(.dp-theme-button-marker) + [data-testid="stElementContainer"] .stButton > button::after {
     left: 5px !important;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Cg fill='%23ecf3ff'%3E%3Cpath d='M15 8c-1.4 4.1.1 8.6 3.6 11.3 3.5 2.8 8.3 3.3 12.3 1.5-1.3 2.7-3.7 4.8-6.8 5.6-5.8 1.6-11.8-1.8-13.4-7.6C9.4 13 11.2 9.3 15 8Z'/%3E%3Ccircle cx='24' cy='12' r='1.4'/%3E%3Ccircle cx='29.5' cy='16.5' r='1.1'/%3E%3Ccircle cx='23.5' cy='20.5' r='1.1'/%3E%3Ccircle cx='33.5' cy='22.5' r='1.2'/%3E%3Ccircle cx='18' cy='18' r='0.9'/%3E%3C/g%3E%3C/svg%3E") !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Cg fill='none' stroke='%23ecf3ff' stroke-linecap='round' stroke-width='3'%3E%3Cpath d='M22 5v5'/%3E%3Cpath d='M22 34v5'/%3E%3Cpath d='M5 22h5'/%3E%3Cpath d='M34 22h5'/%3E%3Cpath d='M10.4 10.4l3.5 3.5'/%3E%3Cpath d='M30.1 30.1l3.5 3.5'/%3E%3Cpath d='M33.6 10.4l-3.5 3.5'/%3E%3Cpath d='M13.9 30.1l-3.5 3.5'/%3E%3C/g%3E%3Ccircle cx='22' cy='22' r='8.2' fill='%23ecf3ff'/%3E%3C/svg%3E") !important;
 }
 [data-testid="stElementContainer"]:has(.dp-theme-button-marker) + [data-testid="stElementContainer"] .stButton > button p {
     display: none !important;
@@ -1392,7 +1421,7 @@ def _dashboard_svg(theme: str) -> str:
   <circle cx="60"  cy="106" r="5.5" fill="#ff4444" opacity="0.75"/>
   <circle cx="80"  cy="106" r="5.5" fill="#e0a020" opacity="0.75"/>
   <circle cx="100" cy="106" r="5.5" fill="#5cd65c" opacity="0.75"/>
-  <text x="210" y="111" font-family="Fira Code,monospace" font-size="11" fill="#444444">devpulse · intelligence</text>
+  <text x="210" y="111" font-family="Fira Code,monospace" font-size="11" fill="#444444">Developer Radar · intelligence</text>
 
   <text x="56" y="150" font-family="Fira Code,monospace" font-size="11" fill="url(#g1)">$</text>
   <text x="70" y="150" font-family="Fira Code,monospace" font-size="11" fill="#707070">analysing developer discussions</text>
@@ -1517,7 +1546,7 @@ def _nav_bar(active_page: str) -> None:
             '<div class="dp-logo-wrap">'
             '<div class="dp-logo">'
             '<span class="dp-logo-pulse"></span>'
-            'Dev<span class="dp-logo-grad">Pulse</span>'
+            'Developer<span class="dp-logo-grad">Radar</span>'
             '</div>'
             '</div>',
             unsafe_allow_html=True,
@@ -1620,7 +1649,7 @@ def _show_landing() -> None:
         )
         st.markdown(
             '<p class="dp-hero-sub">'
-            'DevPulse aggregates and analyses real-time discussions from Reddit and Hacker News — '
+            'Developer Radar aggregates and analyses real-time discussions from Reddit and Hacker News — '
             'surfacing sentiment trends, emotional signals, and community divergence across tools, '
             'frameworks, and the topics developers care about.'
             '</p>',
@@ -1720,7 +1749,7 @@ def _show_login_page() -> None:
         elif not st.session_state.get("show_reset"):
             st.markdown(
                 '<p class="dp-form-title">Welcome back</p>'
-                '<p class="dp-form-sub">Sign in to your DevPulse account</p>',
+                '<p class="dp-form-sub">Sign in to your Developer Radar account</p>',
                 unsafe_allow_html=True,
             )
             with st.form("login_form"):
@@ -1868,7 +1897,7 @@ def _show_register_page() -> None:
         if not st.session_state.get("verify_token_sent"):
             st.markdown(
                 '<p class="dp-form-title">Create account</p>'
-                '<p class="dp-form-sub">Join DevPulse and start tracking developer sentiment.</p>',
+                '<p class="dp-form-sub">Join Developer Radar and start tracking developer sentiment.</p>',
                 unsafe_allow_html=True,
             )
 
@@ -2005,6 +2034,7 @@ def show_dashboard() -> None:
         live_feed,
         tool_tracker,
         trends,
+        weekly_report,
     )
 
     email = st.session_state.get("email", "")
@@ -2018,7 +2048,7 @@ def show_dashboard() -> None:
             '<div class="dp-logo-wrap">'
             '<div class="dp-logo">'
             '<span class="dp-logo-pulse"></span>'
-            'Dev<span class="dp-logo-grad">Pulse</span>'
+            'Developer<span class="dp-logo-grad">Radar</span>'
             '</div>'
             '</div>',
             unsafe_allow_html=True,
@@ -2053,11 +2083,12 @@ def show_dashboard() -> None:
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "  Live Feed  ",
         "  Trends  ",
         "  Community  ",
         "  Tool Tracker  ",
+        "  Weekly Report  ",
         "  Ask AI  ",
     ])
 
@@ -2070,6 +2101,8 @@ def show_dashboard() -> None:
     with tab4:
         tool_tracker.render()
     with tab5:
+        weekly_report.render()
+    with tab6:
         intelligence_reports.render()
 
 

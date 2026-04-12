@@ -26,7 +26,17 @@ def render() -> None:
     with col1:
         topic = topic_filter("cc_topic")
     with col2:
-        days = days_filter("cc_days", default=28)
+        window = api_get("/community/window") or {}
+        max_lookback_days = max(1, int(window.get("max_lookback_days", 1)))
+        if "cc_days" in st.session_state and int(st.session_state["cc_days"]) > max_lookback_days:
+            st.session_state["cc_days"] = max_lookback_days
+        days = days_filter(
+            "cc_days",
+            default=min(28, max_lookback_days),
+            min_value=1,
+            max_value=max_lookback_days,
+            step=1,
+        )
 
     params: dict = {"days": days}
     if topic:

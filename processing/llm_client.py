@@ -1,5 +1,5 @@
 """
-Unified LLM client for DevPulse.
+Unified LLM client for Developer Radar.
 
 Routes LLM calls through either OpenRouter or OpenAI depending on
 the provider argument. This gives a single call interface across
@@ -99,8 +99,8 @@ def _call_openrouter(
                 headers={
                     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://github.com/devpulse",
-                    "X-Title": "DevPulse",
+                    "HTTP-Referer": "https://github.com/Anaghar27/Developer-Radar",
+                    "X-Title": "Developer Radar",
                 },
                 json={
                     "model": m,

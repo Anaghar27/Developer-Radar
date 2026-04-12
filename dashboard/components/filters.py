@@ -31,15 +31,20 @@ def sentiment_filter(key: str = "sentiment") -> str | None:
     return None if val == "All" else val
 
 
-def days_filter(key: str = "days", default: int = 28) -> int:
-    valid_default = min(max(default, 7), 84)
-    valid_default -= (valid_default - 7) % 7
+def days_filter(
+    key: str = "days",
+    default: int = 28,
+    min_value: int = 1,
+    max_value: int = 84,
+    step: int = 1,
+) -> int:
+    valid_default = min(max(default, min_value), max_value)
     return st.slider(
         "Days to look back",
-        min_value=7,
-        max_value=84,
+        min_value=min_value,
+        max_value=max_value,
         value=valid_default,
-        step=7,
+        step=step,
         key=key,
     )
 

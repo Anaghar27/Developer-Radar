@@ -86,8 +86,8 @@ async def cache_invalidate_pattern(redis, pattern: str) -> int:
 
 
 async def cache_invalidate_all(redis) -> int:
-    """Delete all DevPulse cache keys. Called after dbt run."""
-    return await cache_invalidate_pattern(redis, "devpulse:*")
+    """Delete all Developer Radar cache keys. Called after dbt run."""
+    return await cache_invalidate_pattern(redis, "developer_radar:*")
 
 
 # ── Cache key builders ────────────────────────────────────────────────────────
@@ -96,9 +96,9 @@ def make_cache_key(prefix: str, **kwargs) -> str:
     """
     Build a consistent cache key from prefix and query params.
     Example: make_cache_key("trends", topic="ml", source="reddit")
-    → "devpulse:trends:source=reddit:topic=ml"
+    → "developer_radar:trends:source=reddit:topic=ml"
     """
-    parts = [f"devpulse:{prefix}"]
+    parts = [f"developer_radar:{prefix}"]
     for k, v in sorted(kwargs.items()):
         if v is not None:
             parts.append(f"{k}={v}")

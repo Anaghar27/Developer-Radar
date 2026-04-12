@@ -24,8 +24,18 @@ def render() -> None:
     # ── Filters ───────────────────────────────────────────────────────────────
     filters_label()
     col1, col2 = st.columns(2)
+    window = api_get("/tools/window") or {}
+    max_lookback_days = max(1, int(window.get("max_lookback_days", 1)))
+    if "tt_days" in st.session_state and int(st.session_state["tt_days"]) > max_lookback_days:
+        st.session_state["tt_days"] = max_lookback_days
     with col2:
-        days = days_filter("tt_days", default=28)
+        days = days_filter(
+            "tt_days",
+            default=min(28, max_lookback_days),
+            min_value=1,
+            max_value=max_lookback_days,
+            step=1,
+        )
 
     all_data = api_get("/tools/compare", params={"days": days})
     if not all_data or not all_data.get("tools"):

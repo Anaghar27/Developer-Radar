@@ -1,4 +1,4 @@
-name: devpulse-platform
+name: developer-radar-platform
 
 services:
   postgres:
@@ -24,22 +24,22 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - devpulse_net
+      - developer_radar_net
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: devpulse_zookeeper
+    container_name: developer_radar_zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     volumes:
       - zookeeper_data:/var/lib/zookeeper/data
     networks:
-      - devpulse_net
+      - developer_radar_net
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: devpulse_kafka
+    container_name: developer_radar_kafka
     restart: unless-stopped
     depends_on:
       - zookeeper
@@ -55,7 +55,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     networks:
-      - devpulse_net
+      - developer_radar_net
     healthcheck:
       test:
         - CMD-SHELL
@@ -65,11 +65,11 @@ services:
 
   redis:
     image: redis:7.2-alpine
-    container_name: devpulse_redis
+    container_name: developer_radar_redis
     ports:
       - "6379:6379"
     networks:
-      - devpulse_net
+      - developer_radar_net
     healthcheck:
       test:
         - CMD
@@ -92,13 +92,13 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-devpulse-airflow-local-secret}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-developer-radar-airflow-local-secret}
       AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
       AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
       POSTGRES_HOST: postgres
       PYTHONPATH: /opt/airflow/project
       DBT_PROJECT_DIR: /opt/airflow/project/transform
-      DBT_DUCKDB_PATH: /opt/airflow/project/transform/devpulse.duckdb
+      DBT_DUCKDB_PATH: /opt/airflow/project/transform/developer_radar.duckdb
     ports:
       - "8080:8080"
     volumes:
@@ -113,7 +113,7 @@ services:
     command:
       - airflow db migrate && exec airflow webserver
     networks:
-      - devpulse_net
+      - developer_radar_net
 
   airflow-scheduler:
     build:
@@ -129,13 +129,13 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-devpulse-airflow-local-secret}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-developer-radar-airflow-local-secret}
       AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
       AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
       POSTGRES_HOST: postgres
       PYTHONPATH: /opt/airflow/project
       DBT_PROJECT_DIR: /opt/airflow/project/transform
-      DBT_DUCKDB_PATH: /opt/airflow/project/transform/devpulse.duckdb
+      DBT_DUCKDB_PATH: /opt/airflow/project/transform/developer_radar.duckdb
     volumes:
       - ./pipeline:/opt/airflow/dags
       - ./:/opt/airflow/project
@@ -148,13 +148,13 @@ services:
     command:
       - airflow db migrate && exec airflow scheduler
     networks:
-      - devpulse_net
+      - developer_radar_net
 
   api:
     build:
       context: .
       dockerfile: api/Dockerfile
-    container_name: devpulse_api
+    container_name: developer_radar_api
     ports:
       - "8000:8000"
     env_file:
@@ -171,7 +171,7 @@ services:
       kafka:
         condition: service_healthy
     networks:
-      - devpulse_net
+      - developer_radar_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/ping"]
       interval: 30s
@@ -183,7 +183,7 @@ services:
 
   dashboard:
     image: python:3.11-slim
-    container_name: devpulse_dashboard
+    container_name: developer_radar_dashboard
     working_dir: /app
     command: >
       bash -c "pip install streamlit plotly pandas requests python-dotenv &&
@@ -197,7 +197,7 @@ services:
     depends_on:
       - api
     networks:
-      - devpulse_net
+      - developer_radar_net
     volumes:
       - .:/app
     restart: unless-stopped
@@ -208,5 +208,5 @@ volumes:
   airflow_logs:
 
 networks:
-  devpulse_net:
+  developer_radar_net:
     driver: bridge

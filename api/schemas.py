@@ -45,7 +45,7 @@ class TokenResponse(BaseModel):
 class PostResponse(BaseModel):
     post_id: str
     source: str
-    subreddit: str | None
+    subreddit: str | None = None
     title: str
     url: str
     score: int
@@ -119,6 +119,12 @@ class CommunityListResponse(BaseModel):
     data: list[CommunityDivergenceResponse]
 
 
+class DataWindowResponse(BaseModel):
+    earliest_post_date: date | None
+    latest_post_date: date | None
+    max_lookback_days: int
+
+
 # ── Alerts ────────────────────────────────────────────────────────────────────
 
 class AlertResponse(BaseModel):
@@ -144,9 +150,21 @@ class QueryResponse(BaseModel):
     query: str
     report: str
     sources_used: list[str]
+    source_items: list[dict] = []
     generated_at: datetime
     cached: bool = False
     query_variants: int = 1
+
+
+class SavedInsightReportResponse(BaseModel):
+    id: int
+    query: str
+    report_text: str
+    formatted_report_text: str | None = None
+    has_pdf: bool = False
+    sources_used: list[str]
+    source_items: list[dict] = []
+    generated_at: datetime
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

@@ -103,7 +103,7 @@ def detect_volume_spikes(date=None):
 
     import duckdb
 
-    duckdb_path = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
+    duckdb_path = os.getenv("DBT_DUCKDB_PATH", "transform/developer_radar.duckdb")
     target_date = date or datetime.now(UTC).date()
 
     try:

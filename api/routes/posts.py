@@ -1,17 +1,16 @@
 import logging
 import os
 
-import duckdb
 from fastapi import APIRouter, Depends, Query, Request
 
 from api.auth.dependencies import get_current_user
 from api.cache.redis_client import cache_get, cache_set, make_cache_key
 from api.schemas import PostResponse, PostsListResponse
-from api.utils import duckdb_available
+from api.utils import connect_duckdb_with_postgres, duckdb_available
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-DUCKDB_PATH = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
+DUCKDB_PATH = os.getenv("DBT_DUCKDB_PATH", "transform/developer_radar.duckdb")
 
 
 def _build_posts_filters(
@@ -52,7 +51,7 @@ async def get_posts(
     topic: str | None = Query(None, description="Filter by topic"),
     tool: str | None = Query(None, description="Filter by tool_mentioned"),
     sentiment: str | None = Query(None, description="Filter by sentiment"),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0, description="Number of posts to skip for pagination"),
     current_user: dict = Depends(get_current_user),
 ):
@@ -88,7 +87,7 @@ async def get_posts(
         )
 
     try:
-        conn = duckdb.connect(DUCKDB_PATH, read_only=True)
+        conn = connect_duckdb_with_postgres()
         where_clause, filter_params = _build_posts_filters(
             source=source,
             topic=topic,
@@ -105,7 +104,7 @@ async def get_posts(
 
         data_sql = f"""
             SELECT
-                post_id, source, subreddit, title, url, score,
+                post_id, source, title, url, score,
                 sentiment, emotion, topic, tool_mentioned,
                 controversy_score, post_date, created_at_utc
             FROM int_posts_enriched
@@ -116,7 +115,7 @@ async def get_posts(
         rows = conn.execute(data_sql, filter_params + [limit, offset]).fetchall()
 
         columns = [
-            "post_id", "source", "subreddit", "title", "url", "score",
+            "post_id", "source", "title", "url", "score",
             "sentiment", "emotion", "topic", "tool_mentioned",
             "controversy_score", "post_date", "created_at_utc",
         ]

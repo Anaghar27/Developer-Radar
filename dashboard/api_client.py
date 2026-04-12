@@ -42,6 +42,36 @@ def api_get(endpoint: str, params: dict = None) -> dict | None:
         return None
 
 
+def api_get_bytes(endpoint: str, params: dict = None) -> bytes | None:
+    """Authenticated GET request that returns raw bytes."""
+    token = get_token()
+    if not token:
+        st.error("Not authenticated. Please log in.")
+        return None
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}{endpoint}",
+            headers={"Authorization": f"Bearer {token}"},
+            params=params,
+            timeout=30,
+        )
+        if response.status_code == 401:
+            st.session_state.pop("token", None)
+            st.query_params.clear()
+            st.error("Session expired. Please log in again.")
+            st.rerun()
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.content
+    except requests.exceptions.ConnectionError:
+        st.error("Cannot connect to API. Is the server running?")
+        return None
+    except Exception as e:
+        st.error(f"API error: {e}")
+        return None
+
+
 def api_post(endpoint: str, payload: dict) -> dict | None:
     """
     Authenticated POST request to FastAPI.

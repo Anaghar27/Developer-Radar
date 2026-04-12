@@ -1,8 +1,8 @@
-name: devpulse
+name: developer_radar
 version: "1.0.0"
 config-version: 2
 
-profile: devpulse
+profile: developer_radar
 
 model-paths: ["models"]
 test-paths: ["tests"]
@@ -17,7 +17,7 @@ clean-targets:
   - "dbt_packages"
 
 models:
-  devpulse:
+  developer_radar:
     staging:
       +materialized: view
     intermediate:

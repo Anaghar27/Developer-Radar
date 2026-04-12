@@ -15,7 +15,7 @@ router = APIRouter()
 )
 async def invalidate_cache(request: Request):
     """
-    Flush all DevPulse Redis cache keys.
+    Flush all Developer Radar Redis cache keys.
     Internal API key required.
     Called by Airflow after dbt run completes.
     """
