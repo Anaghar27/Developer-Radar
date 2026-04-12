@@ -1,6 +1,8 @@
+import os
 import logging
 from typing import Optional
 
+import duckdb
 from fastapi import APIRouter, Depends, Query, Request
 
 from api.auth.dependencies import get_current_user
@@ -10,26 +12,65 @@ from api.utils import duckdb_available
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+DUCKDB_PATH = os.getenv("DBT_DUCKDB_PATH", "transform/devpulse.duckdb")
+
+
+def _build_posts_filters(
+    source: Optional[str] = None,
+    topic: Optional[str] = None,
+    tool: Optional[str] = None,
+    sentiment: Optional[str] = None,
+) -> tuple[str, list]:
+    """
+    Build WHERE clause and params for posts queries.
+    Returns (where_clause, params) tuple.
+    Both the data query and count query use the same output.
+    """
+    conditions = ["1=1"]
+    params = []
+
+    if source:
+        conditions.append("source = ?")
+        params.append(source)
+    if topic:
+        conditions.append("topic = ?")
+        params.append(topic)
+    if tool:
+        conditions.append("tool_mentioned = ?")
+        params.append(tool)
+    if sentiment:
+        conditions.append("sentiment = ?")
+        params.append(sentiment)
+
+    where_clause = " AND ".join(conditions)
+    return where_clause, params
 
 
 @router.get("/posts", response_model=PostsListResponse, tags=["data"])
 async def get_posts(
     request: Request,
-    source: str | None = Query(None, description="Filter by source: reddit or hackernews"),
-    topic: str | None = Query(None, description="Filter by topic"),
-    tool: str | None = Query(None, description="Filter by tool_mentioned"),
-    sentiment: str | None = Query(None, description="Filter by sentiment"),
-    limit: int = Query(50, ge=1, le=1000),
+    source: Optional[str] = Query(None, description="Filter by source: reddit or hackernews"),
+    topic: Optional[str] = Query(None, description="Filter by topic"),
+    tool: Optional[str] = Query(None, description="Filter by tool_mentioned"),
+    sentiment: Optional[str] = Query(None, description="Filter by sentiment"),
+    limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0, description="Number of posts to skip for pagination"),
     current_user: dict = Depends(get_current_user),
 ):
     """
     Return recent posts with classification labels.
     Filters: source, topic, tool, sentiment.
-    Redis cached for 5 minutes.
-    Mirrors int_posts_enriched: raw_posts LEFT JOIN processed_posts.
+    Redis cached for 5 minutes via int_posts_enriched in DuckDB.
     """
-    cache_key = make_cache_key("posts_v2", source=source, topic=topic, tool=tool, sentiment=sentiment, limit=limit, offset=offset)
+    cache_key = make_cache_key(
+        "posts",
+        source=source,
+        topic=topic,
+        tool=tool,
+        sentiment=sentiment,
+        limit=limit,
+        offset=offset,
+    )
     redis = request.app.state.redis
 
     cached = await cache_get(redis, cache_key)
@@ -38,95 +79,60 @@ async def get_posts(
 
     if not duckdb_available():
         logger.warning("DuckDB not available — returning empty response")
-        return PostsListResponse(posts=[], total=0, limit=limit)
+        return PostsListResponse(
+            posts=[],
+            total=0,
+            limit=limit,
+            offset=offset,
+            has_more=False,
+            next_offset=None,
+        )
 
     try:
-        pool = request.app.state.db_pool
-        if pool is None:
-            raise RuntimeError("Database unavailable")
-
-        # Mirror int_posts_enriched: raw_posts LEFT JOIN processed_posts
-        # raw_posts uses: id, source, title, url, score, created_at, ingest_batch_id
-        # processed_posts joins on: post_id (= raw_posts.id)
-        query = """
-            SELECT
-                r.id::text              AS post_id,
-                r.source,
-                NULL::text              AS subreddit,
-                r.title,
-                r.url,
-                COALESCE(r.score, 0)    AS score,
-                CASE
-                    WHEN p.sentiment IN ('positive', 'negative', 'neutral')
-                        THEN p.sentiment
-                    ELSE 'neutral'
-                END                     AS sentiment,
-                CASE
-                    WHEN p.emotion IN ('excited', 'frustrated', 'skeptical', 'curious', 'hopeful', 'neutral')
-                        THEN p.emotion
-                    ELSE 'neutral'
-                END                     AS emotion,
-                CASE
-                    WHEN p.topic IN ('LLM', 'Agents', 'RAG', 'MLOps', 'Python', 'WebDev', 'DevTools', 'Cloud', 'Hardware', 'Security', 'Career', 'OpenSource', 'Other')
-                        THEN p.topic
-                    ELSE 'Other'
-                END                     AS topic,
-                NULLIF(trim(p.tool_mentioned), '') AS tool_mentioned,
-                CASE
-                    WHEN p.controversy_score < 0 THEN 0.0
-                    WHEN p.controversy_score > 1 THEN 1.0
-                    ELSE COALESCE(p.controversy_score, 0.0)
-                END                     AS controversy_score,
-                r.created_at::date      AS post_date,
-                r.created_at            AS created_at_utc
-            FROM raw_posts r
-            LEFT JOIN processed_posts p ON r.id = p.post_id
-            WHERE r.title IS NOT NULL AND trim(r.title) != ''
-        """
-        params = []
-        idx = 1
-
-        if source:
-            query += f" AND r.source = ${idx}"
-            params.append(source)
-            idx += 1
-        if topic:
-            query += f" AND p.topic = ${idx}"
-            params.append(topic)
-            idx += 1
-        if tool:
-            query += f" AND p.tool_mentioned = ${idx}"
-            params.append(tool)
-            idx += 1
-        if sentiment:
-            query += f" AND p.sentiment = ${idx}"
-            params.append(sentiment)
-            idx += 1
-
-        count_query = query.replace(
-            "SELECT\n                r.id::text              AS post_id,\n                r.source,\n                NULL::text              AS subreddit,\n                r.title,\n                r.url,\n                COALESCE(r.score, 0)    AS score,\n                CASE\n                    WHEN p.sentiment IN ('positive', 'negative', 'neutral')\n                        THEN p.sentiment\n                    ELSE 'neutral'\n                END                     AS sentiment,\n                CASE\n                    WHEN p.emotion IN ('excited', 'frustrated', 'skeptical', 'curious', 'hopeful', 'neutral')\n                        THEN p.emotion\n                    ELSE 'neutral'\n                END                     AS emotion,\n                CASE\n                    WHEN p.topic IN ('LLM', 'Agents', 'RAG', 'MLOps', 'Python', 'WebDev', 'DevTools', 'Cloud', 'Hardware', 'Security', 'Career', 'OpenSource', 'Other')\n                        THEN p.topic\n                    ELSE 'Other'\n                END                     AS topic,\n                NULLIF(trim(p.tool_mentioned), '') AS tool_mentioned,\n                CASE\n                    WHEN p.controversy_score < 0 THEN 0.0\n                    WHEN p.controversy_score > 1 THEN 1.0\n                    ELSE COALESCE(p.controversy_score, 0.0)\n                END                     AS controversy_score,\n                r.created_at::date      AS post_date,\n                r.created_at            AS created_at_utc",
-            "SELECT COUNT(*)"
+        conn = duckdb.connect(DUCKDB_PATH, read_only=True)
+        where_clause, filter_params = _build_posts_filters(
+            source=source,
+            topic=topic,
+            tool=tool,
+            sentiment=sentiment,
         )
-        total_row = await pool.fetchrow(count_query, *params)
-        total = total_row[0] if total_row else 0
 
-        query += f" ORDER BY r.created_at DESC LIMIT ${idx} OFFSET ${idx + 1}"
-        params.append(limit)
-        params.append(offset)
+        count_sql = f"""
+            SELECT COUNT(*)
+            FROM int_posts_enriched
+            WHERE {where_clause}
+        """
+        total_count = conn.execute(count_sql, filter_params).fetchone()[0]
 
-        rows = await pool.fetch(query, *params)
-        posts = [PostResponse(**dict(row)) for row in rows]
+        data_sql = f"""
+            SELECT
+                post_id, source, subreddit, title, url, score,
+                sentiment, emotion, topic, tool_mentioned,
+                controversy_score, post_date, created_at_utc
+            FROM int_posts_enriched
+            WHERE {where_clause}
+            ORDER BY created_at_utc DESC
+            LIMIT ? OFFSET ?
+        """
+        rows = conn.execute(data_sql, filter_params + [limit, offset]).fetchall()
 
+        columns = [
+            "post_id", "source", "subreddit", "title", "url", "score",
+            "sentiment", "emotion", "topic", "tool_mentioned",
+            "controversy_score", "post_date", "created_at_utc",
+        ]
+        posts = [PostResponse(**dict(zip(columns, row))) for row in rows]
+        conn.close()
     except Exception as e:
-        logger.error(f"Posts query failed: {e}")
+        logger.error(f"DuckDB posts query failed: {e}")
         posts = []
-        total = 0
+        total_count = 0
 
-    has_more = (offset + limit) < total
+    has_more = (offset + limit) < total_count
     next_offset = (offset + limit) if has_more else None
     result = PostsListResponse(
         posts=posts,
-        total=total,
+        total=total_count,
         limit=limit,
         offset=offset,
         has_more=has_more,

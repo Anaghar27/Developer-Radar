@@ -134,9 +134,11 @@ def test_posts_requires_auth(client):
 
 
 def test_posts_with_auth(client, auth_token):
-    # posts.py queries PostgreSQL via app.state.db_pool (asyncpg), not DuckDB.
-    # The mock_pool.fetch already returns [] from the client fixture.
-    response = client.get("/posts", headers={"Authorization": f"Bearer {auth_token}"})
+    with patch("api.routes.posts.duckdb.connect") as mock_conn:
+        mock_conn.return_value.execute.return_value.fetchone.return_value = [0]
+        mock_conn.return_value.execute.return_value.fetchall.return_value = []
+        mock_conn.return_value.close = MagicMock()
+        response = client.get("/posts", headers={"Authorization": f"Bearer {auth_token}"})
     assert response.status_code == 200
     body = response.json()
     assert "posts" in body
@@ -347,10 +349,15 @@ def test_pagination_next_offset_is_correct(client, auth_token):
     Verifies pagination math is correct.
     """
     # total=100, offset=10, limit=20 → has_more=True, next_offset=30
-    client.app.state.db_pool.fetchrow.return_value = (100,)
-    client.app.state.db_pool.fetch.return_value = []
-
-    with patch("api.routes.posts.duckdb_available", return_value=True):
+    with patch("api.routes.posts.duckdb_available", return_value=True), \
+         patch("api.routes.posts.duckdb.connect") as mock_connect:
+        mock_conn = MagicMock()
+        mock_count_result = MagicMock()
+        mock_count_result.fetchone.return_value = [100]
+        mock_data_result = MagicMock()
+        mock_data_result.fetchall.return_value = []
+        mock_conn.execute.side_effect = [mock_count_result, mock_data_result]
+        mock_connect.return_value = mock_conn
         response = client.get(
             "/posts?limit=20&offset=10",
             headers={"Authorization": f"Bearer {auth_token}"},
@@ -369,13 +376,20 @@ def test_pagination_no_more_pages(client, auth_token):
     has_more is False and next_offset is None on last page.
     """
     # total=25, offset=20, limit=10 → (20+10)=30 >= 25 → last page
-    client.app.state.db_pool.fetchrow.return_value = (25,)
-    client.app.state.db_pool.fetch.return_value = []
+    with patch("api.routes.posts.duckdb_available", return_value=True), \
+         patch("api.routes.posts.duckdb.connect") as mock_connect:
+        mock_conn = MagicMock()
+        mock_count_result = MagicMock()
+        mock_count_result.fetchone.return_value = [25]
+        mock_data_result = MagicMock()
+        mock_data_result.fetchall.return_value = []
+        mock_conn.execute.side_effect = [mock_count_result, mock_data_result]
+        mock_connect.return_value = mock_conn
 
-    response = client.get(
-        "/posts?limit=10&offset=20",
-        headers={"Authorization": f"Bearer {auth_token}"},
-    )
+        response = client.get(
+            "/posts?limit=10&offset=20",
+            headers={"Authorization": f"Bearer {auth_token}"},
+        )
 
     assert response.status_code == 200
     data = response.json()
@@ -387,10 +401,20 @@ def test_pagination_no_more_pages(client, auth_token):
 
 def test_posts_source_filter(client, auth_token):
     """Source filter is accepted without errors."""
-    response = client.get(
-        "/posts?source=reddit",
-        headers={"Authorization": f"Bearer {auth_token}"},
-    )
+    with patch("api.routes.posts.duckdb_available", return_value=True), \
+         patch("api.routes.posts.duckdb.connect") as mock_connect:
+        mock_conn = MagicMock()
+        mock_count_result = MagicMock()
+        mock_count_result.fetchone.return_value = [0]
+        mock_data_result = MagicMock()
+        mock_data_result.fetchall.return_value = []
+        mock_conn.execute.side_effect = [mock_count_result, mock_data_result]
+        mock_connect.return_value = mock_conn
+
+        response = client.get(
+            "/posts?source=reddit",
+            headers={"Authorization": f"Bearer {auth_token}"},
+        )
     assert response.status_code == 200
 
 
