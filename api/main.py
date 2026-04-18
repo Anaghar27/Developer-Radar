@@ -6,18 +6,19 @@ import asyncpg
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from api.auth.router import router as auth_router
 from api.config import validate_config
+from api.rate_limit import limiter
 from api.routes.alerts import router as alerts_router
 from api.routes.cache import router as cache_router
 from api.routes.community import router as community_router
 from api.routes.health import router as health_router
 from api.routes.posts import router as posts_router
 from api.routes.query import router as query_router
+from api.routes.admin import router as admin_router
 from api.routes.reports import router as reports_router
 from api.routes.tools import router as tools_router
 from api.routes.trends import router as trends_router
@@ -26,8 +27,6 @@ from api.utils import duckdb_available
 load_dotenv()
 
 logger = logging.getLogger(__name__)
-
-limiter = Limiter(key_func=get_remote_address)
 
 # ── Lifespan ─────────────────────────────────────────────────────────────────
 
@@ -104,6 +103,7 @@ app.include_router(community_router)
 app.include_router(alerts_router)
 app.include_router(query_router)
 app.include_router(reports_router)
+app.include_router(admin_router, prefix="/admin", tags=["admin"])
 
 @app.get("/ping")
 @limiter.limit("60/minute")

@@ -11,7 +11,6 @@ import streamlit as st
 
 from dashboard.api_client import api_get, api_get_bytes
 from dashboard.components.charts import section_header
-from reporting.weekly_report_export import build_pdf_chart_figures, render_weekly_report_pdf
 
 WEEKLY_REPORT_QUERY = "What are the key developer sentiment trends and tool discussions from the past week?"
 
@@ -178,19 +177,22 @@ def render() -> None:
         generated_date = str(latest_weekly["generated_at"]).split("T")[0]
         try:
             pdf_bytes = api_get_bytes("/reports/latest/pdf", params={"query": WEEKLY_REPORT_QUERY})
-            if not pdf_bytes:
-                pdf_chart_figures = build_pdf_chart_figures(trends_df)
-                pdf_bytes = render_weekly_report_pdf(latest_weekly, source_items, pdf_chart_figures)
-            st.download_button(
-                "Download PDF",
-                data=pdf_bytes,
-                file_name=f"developer-radar-weekly-report-{generated_date}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                key="weekly_report_download_pdf",
-            )
+            if pdf_bytes:
+                st.download_button(
+                    "Download PDF",
+                    data=pdf_bytes,
+                    file_name=f"developer-radar-weekly-report-{generated_date}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key="weekly_report_download_pdf",
+                )
+            else:
+                st.caption("PDF will be available after the next Sunday run.")
         except Exception as exc:
-            st.caption(f"PDF export unavailable: {exc}")
+            if latest_weekly.get("has_pdf"):
+                st.caption(f"PDF export unavailable: {exc}")
+            else:
+                st.caption("PDF will be available after the next Sunday run.")
 
     st.markdown(presented_report_text)
 

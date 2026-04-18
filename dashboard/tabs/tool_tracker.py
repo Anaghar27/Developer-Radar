@@ -2,7 +2,7 @@
 import pandas as pd
 import streamlit as st
 
-from dashboard.api_client import api_get
+from dashboard.api_client import api_get, api_post
 from dashboard.components.charts import (
     filters_label,
     metric_row,
@@ -85,6 +85,66 @@ def render() -> None:
         if chart_df.empty:
             st.info("No data for the selected tools.")
             return
+
+        selected_tools_sorted = sorted(selected_tools)
+        report_scope_key = f"{','.join(selected_tools_sorted)}|{days}"
+
+        st.markdown("### Tool Decision Report")
+        st.caption(
+            "Generate a concise LLM summary from the selected tools and current time window."
+        )
+        context_value = st.text_area(
+            "Optional decision context",
+            value=st.session_state.get("tt_report_context", ""),
+            placeholder="Example: choosing a framework for a production computer-vision stack",
+            max_chars=500,
+            key="tt_report_context",
+        )
+        report_col, meta_col = st.columns([1, 3])
+        with report_col:
+            generate_report = st.button(
+                "Generate Report",
+                key="tt_generate_report",
+                use_container_width=True,
+            )
+        with meta_col:
+            st.caption(
+                f"Scope: {', '.join(selected_tools_sorted)} over the last {days} days."
+            )
+
+        if generate_report:
+            with st.spinner("Generating tool decision report..."):
+                report_result = api_post(
+                    "/tools/report",
+                    {
+                        "tools": selected_tools_sorted,
+                        "days": days,
+                        "context": context_value.strip() or None,
+                    },
+                )
+            if report_result:
+                st.session_state["tt_report_result"] = report_result
+                st.session_state["tt_report_scope_key"] = report_scope_key
+
+        report_result = (
+            st.session_state.get("tt_report_result")
+            if st.session_state.get("tt_report_scope_key") == report_scope_key
+            else None
+        )
+        if report_result:
+            st.markdown(report_result.get("narrative", ""))
+            stats_summary = report_result.get("stats_summary") or []
+            if stats_summary:
+                st.dataframe(
+                    pd.DataFrame(stats_summary),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            st.caption(
+                f"Generated at {report_result.get('generated_at', 'unknown')} using {report_result.get('model_used', 'unknown')}."
+            )
+
+        st.divider()
 
         tool_comparison_chart(chart_df, title="Tool Sentiment Comparison Over Time")
         st.caption(

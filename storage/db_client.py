@@ -11,6 +11,40 @@ from psycopg2 import extras
 logger = logging.getLogger(__name__)
 
 
+def _ensure_llm_calls_table() -> None:
+    """Backfill the durable LLM call log table for older local databases."""
+    sql = """
+        CREATE TABLE IF NOT EXISTS llm_calls (
+            id BIGSERIAL PRIMARY KEY,
+            operation VARCHAR(100) NOT NULL,
+            provider VARCHAR(100) NOT NULL,
+            model VARCHAR(255) NOT NULL,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            latency_ms NUMERIC(12,2) NOT NULL DEFAULT 0,
+            success BOOLEAN NOT NULL DEFAULT TRUE,
+            error_reason TEXT,
+            cost_usd NUMERIC(12,8) NOT NULL DEFAULT 0,
+            post_id TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """
+    index_sql = [
+        "CREATE INDEX IF NOT EXISTS idx_llm_calls_created_at ON llm_calls(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_calls_operation ON llm_calls(operation)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_calls_provider ON llm_calls(provider)",
+    ]
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+                for statement in index_sql:
+                    cur.execute(statement)
+    except psycopg2.Error:
+        logger.exception("Failed to ensure llm_calls table exists")
+        raise
+
+
 def _ensure_insight_reports_report_columns() -> None:
     """Backfill optional saved-report columns for existing local databases."""
     sql = """
@@ -72,6 +106,124 @@ def insert_raw_post(post: dict) -> None:
                 )
     except psycopg2.Error:
         logger.exception("Failed to insert raw post: %s", post.get("id"))
+        raise
+
+
+def insert_llm_call(call: dict[str, Any]) -> None:
+    """Persist one LLM call so stats survive across processes and restarts."""
+    sql = """
+        INSERT INTO llm_calls (
+            operation,
+            provider,
+            model,
+            input_tokens,
+            output_tokens,
+            latency_ms,
+            success,
+            error_reason,
+            cost_usd,
+            post_id,
+            created_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, NOW()))
+    """
+    try:
+        _ensure_llm_calls_table()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    (
+                        call["operation"],
+                        call["provider"],
+                        call["model"],
+                        int(call.get("input_tokens", 0) or 0),
+                        int(call.get("output_tokens", 0) or 0),
+                        float(call.get("latency_ms", 0.0) or 0.0),
+                        bool(call.get("success", True)),
+                        call.get("error_reason"),
+                        float(call.get("cost_usd", 0.0) or 0.0),
+                        call.get("post_id"),
+                        call.get("timestamp"),
+                    ),
+                )
+    except psycopg2.Error:
+        logger.exception("Failed to persist llm call for operation: %s", call.get("operation"))
+        raise
+
+
+def fetch_llm_stats() -> dict[str, Any]:
+    """Return aggregated durable LLM stats from PostgreSQL."""
+    totals_sql = """
+        SELECT
+            COUNT(*) AS total_calls,
+            COALESCE(SUM(cost_usd), 0) AS total_cost_usd,
+            COALESCE(AVG(latency_ms), 0) AS avg_latency_ms,
+            COALESCE(AVG(CASE WHEN success THEN 1.0 ELSE 0.0 END), 1.0) AS success_rate
+        FROM llm_calls
+    """
+    grouped_sql = """
+        SELECT
+            {dimension} AS label,
+            COUNT(*) AS calls,
+            COALESCE(SUM(cost_usd), 0) AS cost_usd,
+            COALESCE(SUM(latency_ms), 0) AS total_latency_ms,
+            SUM(CASE WHEN success THEN 0 ELSE 1 END) AS failures
+        FROM llm_calls
+        GROUP BY {dimension}
+        ORDER BY COUNT(*) DESC, {dimension} ASC
+    """
+    try:
+        _ensure_llm_calls_table()
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+                cur.execute(totals_sql)
+                totals = dict(cur.fetchone() or {})
+
+                cur.execute(grouped_sql.format(dimension="operation"))
+                by_operation_rows = [dict(row) for row in cur.fetchall()]
+
+                cur.execute(grouped_sql.format(dimension="provider"))
+                by_provider_rows = [dict(row) for row in cur.fetchall()]
+    except psycopg2.Error:
+        logger.exception("Failed to fetch llm stats")
+        raise
+
+    total_calls = int(totals.get("total_calls") or 0)
+    return {
+        "total_calls": total_calls,
+        "total_cost_usd": round(float(totals.get("total_cost_usd") or 0.0), 6),
+        "success_rate": round(float(totals.get("success_rate") or 1.0), 4) if total_calls else 1.0,
+        "avg_latency_ms": round(float(totals.get("avg_latency_ms") or 0.0), 1),
+        "by_operation": {
+            str(row["label"]): {
+                "calls": int(row["calls"] or 0),
+                "cost_usd": round(float(row["cost_usd"] or 0.0), 6),
+                "total_latency_ms": round(float(row["total_latency_ms"] or 0.0), 1),
+                "failures": int(row["failures"] or 0),
+            }
+            for row in by_operation_rows
+        },
+        "by_provider": {
+            str(row["label"]): {
+                "calls": int(row["calls"] or 0),
+                "cost_usd": round(float(row["cost_usd"] or 0.0), 6),
+                "failures": int(row["failures"] or 0),
+            }
+            for row in by_provider_rows
+        },
+    }
+
+
+def reset_llm_stats() -> None:
+    """Delete durable LLM stats from PostgreSQL."""
+    try:
+        _ensure_llm_calls_table()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("TRUNCATE TABLE llm_calls RESTART IDENTITY")
+    except psycopg2.Error:
+        logger.exception("Failed to reset llm stats")
         raise
 
 
@@ -824,13 +976,7 @@ def insert_user(email: str, hashed_password: str, api_key: str) -> int:
 def fetch_user_by_email(email: str) -> dict | None:
     """Fetch a user by email. Returns dict or None."""
     query = """
-        SELECT
-            id,
-            email,
-            hashed_password,
-            api_key,
-            is_active,
-            created_at
+        SELECT id, email, hashed_password, api_key, is_active, is_admin, created_at
         FROM users
         WHERE email = %s
     """
@@ -848,7 +994,7 @@ def fetch_user_by_email(email: str) -> dict | None:
 def fetch_user_by_id(user_id: int) -> dict | None:
     """Fetch a user by id. Returns dict or None."""
     query = """
-        SELECT id, email, hashed_password, api_key, is_active, created_at
+        SELECT id, email, hashed_password, api_key, is_active, is_admin, created_at
         FROM users
         WHERE id = %s
     """

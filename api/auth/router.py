@@ -96,7 +96,11 @@ async def login(body: TokenRequest, request: Request):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email not verified. Please check your inbox for the verification OTP.",
         )
-    token = create_access_token({"sub": user["email"], "user_id": user["id"]})
+    token = create_access_token({
+        "sub": user["email"],
+        "user_id": user["id"],
+        "is_admin": bool(user.get("is_admin", False)),
+    })
     return TokenResponse(access_token=token)
 
 

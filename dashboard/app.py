@@ -2032,10 +2032,12 @@ def show_dashboard() -> None:
         community_comparison,
         intelligence_reports,
         live_feed,
+        llm_admin,
         tool_tracker,
         trends,
         weekly_report,
     )
+    from dashboard.api_client import is_admin_user
 
     email = st.session_state.get("email", "")
     logo_col, spacer_col, theme_col, badge_col, logout_col = st.columns(
@@ -2083,27 +2085,39 @@ def show_dashboard() -> None:
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    # ── Admin visibility guard ────────────────────────────────────────────────
+    # Decode is_admin from the JWT payload (no API call needed — already in token).
+    # The tab is excluded entirely from the tab list for non-admin users.
+    _user_is_admin = is_admin_user()
+
+    _tab_labels = [
         "  Live Feed  ",
         "  Trends  ",
         "  Community  ",
         "  Tool Tracker  ",
         "  Weekly Report  ",
         "  Ask AI  ",
-    ])
+    ]
+    if _user_is_admin:
+        _tab_labels.append("  LLM Analytics  ")
 
-    with tab1:
+    _tabs = st.tabs(_tab_labels)
+
+    with _tabs[0]:
         live_feed.render()
-    with tab2:
+    with _tabs[1]:
         trends.render()
-    with tab3:
+    with _tabs[2]:
         community_comparison.render()
-    with tab4:
+    with _tabs[3]:
         tool_tracker.render()
-    with tab5:
+    with _tabs[4]:
         weekly_report.render()
-    with tab6:
+    with _tabs[5]:
         intelligence_reports.render()
+    if _user_is_admin:
+        with _tabs[6]:
+            llm_admin.render()
 
 
 # ══════════════════════════════════════════════════════════════════════════════

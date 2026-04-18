@@ -1,3 +1,5 @@
+import base64
+import json as _json
 import os
 
 import requests
@@ -9,6 +11,31 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 def get_token() -> str | None:
     """Get JWT token from Streamlit session state."""
     return st.session_state.get("token")
+
+
+def get_current_user_claims() -> dict:
+    """
+    Decode the JWT payload from session state WITHOUT signature verification.
+    Safe to use client-side — we only read display claims (is_admin, email).
+    The API enforces real authorization on every request.
+    Returns an empty dict if no token is present or decoding fails.
+    """
+    token = get_token()
+    if not token:
+        return {}
+    try:
+        # JWT structure: header.payload.signature — payload is base64url encoded
+        payload_b64 = token.split(".")[1]
+        # Add padding so base64 doesn't raise
+        payload_b64 += "=" * (4 - len(payload_b64) % 4)
+        return _json.loads(base64.urlsafe_b64decode(payload_b64))
+    except Exception:
+        return {}
+
+
+def is_admin_user() -> bool:
+    """Return True if the current session user has is_admin=True in their JWT."""
+    return bool(get_current_user_claims().get("is_admin", False))
 
 
 def api_get(endpoint: str, params: dict = None) -> dict | None:

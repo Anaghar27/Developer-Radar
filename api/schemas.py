@@ -104,6 +104,37 @@ class ToolsListResponse(BaseModel):
     tools: list[str]
 
 
+# ── Tool Report ───────────────────────────────────────────────────────────────
+
+class ToolReportRequest(BaseModel):
+    tools: list[str] = Field(
+        ..., min_length=1, max_length=10,
+        description="Tool names to compare e.g. ['pytorch', 'tensorflow']",
+    )
+    days: int = Field(30, ge=1, le=90)
+    context: str | None = Field(
+        None, max_length=500,
+        description="Optional context e.g. 'choosing a vector DB for RAG'",
+    )
+
+
+class ToolStatSummary(BaseModel):
+    tool: str
+    total_posts: int
+    avg_sentiment: float
+    positive_pct: float
+    avg_controversy: float
+
+
+class ToolReportResponse(BaseModel):
+    tools: list[str]
+    days: int
+    stats_summary: list[ToolStatSummary]
+    narrative: str
+    generated_at: str
+    model_used: str
+
+
 # ── Community ─────────────────────────────────────────────────────────────────
 
 class CommunityDivergenceResponse(BaseModel):
@@ -226,3 +257,17 @@ class VerifyOtpResponse(BaseModel):
 class CacheInvalidateResponse(BaseModel):
     status: str
     keys_deleted: int
+
+
+# ── Admin ─────────────────────────────────────────────────────────────────────
+
+from typing import Any
+
+class LLMStatsResponse(BaseModel):
+    total_calls: int
+    total_cost_usd: float
+    success_rate: float
+    avg_latency_ms: float
+    by_operation: dict[str, Any]
+    by_provider: dict[str, Any]
+    snapshot_taken_at: str

@@ -47,3 +47,19 @@ async def require_api_key(
             detail="Invalid or missing API key",
         )
     return api_key
+
+
+async def require_admin_user(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """
+    Admin-only JWT dependency.
+    Requires a valid JWT AND is_admin=True in the token payload.
+    Returns 403 to avoid confirming this route exists to non-admins.
+    """
+    if not current_user.get("is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user

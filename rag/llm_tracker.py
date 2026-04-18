@@ -16,6 +16,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from storage.db_client import insert_llm_call
+
 logger = logging.getLogger(__name__)
 
 LOGS_DIR = Path(__file__).resolve().parent.parent / "artifacts" / "logs" / "llm"
@@ -78,6 +80,11 @@ def record_call(call: LLMCall) -> None:
     with _lock:
         _call_log.append(call)
         _total_cost_usd += call.cost_usd
+
+    try:
+        insert_llm_call(asdict(call))
+    except Exception:
+        logger.exception("Failed to persist LLM call; continuing with in-memory tracking only")
 
     status = "OK" if call.success else f"FAILED ({call.error_reason})"
     logger.info(

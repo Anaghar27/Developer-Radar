@@ -427,3 +427,90 @@ def test_health_endpoint_no_auth_required(client):
     with patch("api.routes.health.fetch_latest_pipeline_run", return_value=None):
         response = client.get("/health")
     assert response.status_code == 200
+
+
+# ── Tool Report ────────────────────────────────────────────────────────────
+
+def test_tool_report_success(client, auth_headers_non_admin, monkeypatch):
+    import duckdb as ddb
+
+    fake_rows = [("pytorch", 120, 0.35, 72.5, 0.21), ("tensorflow", 95, 0.18, 61.0, 0.34)]
+
+    class FakeConn:
+        def execute(self, q, p):
+            return self
+
+        def fetchall(self):
+            return fake_rows
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(ddb, "connect", lambda *a, **kw: FakeConn())
+    monkeypatch.setattr("api.routes.tools.call_llm", lambda *a, **kw: "PyTorch wins.")
+    resp = client.post(
+        "/tools/report",
+        json={"tools": ["pytorch", "tensorflow"], "days": 30},
+        headers=auth_headers_non_admin,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "narrative" in body and "stats_summary" in body
+    assert "model_used" in body and "generated_at" in body
+
+
+def test_tool_report_no_data_422(client, auth_headers_non_admin, monkeypatch):
+    import duckdb as ddb
+
+    class FakeConn:
+        def execute(self, q, p):
+            return self
+
+        def fetchall(self):
+            return []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(ddb, "connect", lambda *a, **kw: FakeConn())
+    resp = client.post(
+        "/tools/report",
+        json={"tools": ["unknowntool99"], "days": 30},
+        headers=auth_headers_non_admin,
+    )
+    assert resp.status_code == 422
+
+
+def test_tool_report_requires_auth(client):
+    resp = client.post("/tools/report", json={"tools": ["pytorch"], "days": 7})
+    assert resp.status_code in (401, 403)
+
+
+# ── Admin LLM Stats ────────────────────────────────────────────────────────
+
+def test_llm_stats_machine_wrong_key(client, monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_KEY", "correct-key")
+    resp = client.get("/admin/llm-stats", headers={"X-API-Key": "wrong"})
+    assert resp.status_code == 403
+
+def test_llm_stats_machine_correct_key(client, monkeypatch):
+    monkeypatch.setattr("api.auth.dependencies.INTERNAL_API_KEY", "mykey")
+    resp = client.get("/admin/llm-stats", headers={"X-API-Key": "mykey"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert all(k in body for k in (
+        "total_calls", "total_cost_usd", "success_rate",
+        "avg_latency_ms", "by_operation", "by_provider", "snapshot_taken_at"
+    ))
+
+def test_llm_stats_admin_regular_user_rejected(client, auth_headers_non_admin):
+    resp = client.get("/admin/me/llm-stats", headers=auth_headers_non_admin)
+    assert resp.status_code == 403
+
+def test_llm_stats_admin_accepted(client, auth_headers_admin):
+    resp = client.get("/admin/me/llm-stats", headers=auth_headers_admin)
+    assert resp.status_code == 200
+
+def test_llm_stats_no_token_is_401(client):
+    resp = client.get("/admin/me/llm-stats")
+    assert resp.status_code == 401
