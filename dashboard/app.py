@@ -2028,6 +2028,7 @@ def show_dashboard() -> None:
     # before the next reload — not just at login time.
     _write_session_cookies(st.session_state["token"], st.session_state["email"])
 
+    from dashboard.api_client import is_admin_user  # noqa: PLC0415
     from dashboard.tabs import (  # noqa: PLC0415
         community_comparison,
         intelligence_reports,
@@ -2037,7 +2038,6 @@ def show_dashboard() -> None:
         trends,
         weekly_report,
     )
-    from dashboard.api_client import is_admin_user
 
     email = st.session_state.get("email", "")
     logo_col, spacer_col, theme_col, badge_col, logout_col = st.columns(

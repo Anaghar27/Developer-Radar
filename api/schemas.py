@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -260,8 +261,6 @@ class CacheInvalidateResponse(BaseModel):
 
 
 # ── Admin ─────────────────────────────────────────────────────────────────────
-
-from typing import Any
 
 class LLMStatsResponse(BaseModel):
     total_calls: int

@@ -303,7 +303,7 @@ def test_corrective_rag_retries_when_relevance_low():
 
     retrieve_call_count = {"n": 0}
 
-    def mock_retrieve(query, limit, expanded_queries=None):
+    def mock_retrieve(query, limit, expanded_queries=None, since=None):
         retrieve_call_count["n"] += 1
         return list(SAMPLE_POSTS)
 
@@ -334,7 +334,7 @@ def test_corrective_rag_no_retry_when_relevance_high():
 
     retrieve_call_count = {"n": 0}
 
-    def mock_retrieve(query, limit, expanded_queries=None):
+    def mock_retrieve(query, limit, expanded_queries=None, since=None):
         retrieve_call_count["n"] += 1
         return list(SAMPLE_POSTS)
 

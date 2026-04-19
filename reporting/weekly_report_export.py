@@ -8,8 +8,6 @@ from html import escape
 from io import BytesIO
 
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 
 
 def inline_markdown_to_html(text: str) -> str:
@@ -124,7 +122,8 @@ def build_pdf_base_layout() -> dict:
     )
 
 
-def build_pdf_sentiment_figure(trends_df: pd.DataFrame) -> go.Figure:
+def build_pdf_sentiment_figure(trends_df: pd.DataFrame):
+    import plotly.graph_objects as go
     daily = (
         trends_df.groupby("post_date")
         .agg(avg_sentiment=("avg_sentiment", "mean"))
@@ -155,7 +154,9 @@ def build_pdf_sentiment_figure(trends_df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def build_pdf_topics_figure(trends_df: pd.DataFrame) -> go.Figure:
+def build_pdf_topics_figure(trends_df: pd.DataFrame):
+    import plotly.express as px
+    import plotly.graph_objects as go
     topic_df = (
         trends_df.groupby("topic")
         .agg(post_count=("post_count", "sum"))
@@ -179,7 +180,7 @@ def build_pdf_topics_figure(trends_df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def build_pdf_chart_figures(trends_df: pd.DataFrame) -> list[go.Figure]:
+def build_pdf_chart_figures(trends_df: pd.DataFrame) -> list:
     if trends_df.empty:
         return []
     normalized_df = trends_df.copy()
@@ -190,7 +191,7 @@ def build_pdf_chart_figures(trends_df: pd.DataFrame) -> list[go.Figure]:
     ]
 
 
-def render_weekly_report_pdf(report: dict, source_items: list[dict], chart_figures: list[go.Figure]) -> bytes:
+def render_weekly_report_pdf(report: dict, source_items: list[dict], chart_figures: list) -> bytes:
     try:
         from reportlab.lib import colors
         from reportlab.lib.enums import TA_LEFT

@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 
 import psycopg2
 import psycopg2.extras
@@ -33,18 +34,25 @@ def get_pg_connection():
     )
 
 
-def semantic_search(query: str, limit: int = 20) -> list[dict]:
+def semantic_search(query: str, limit: int = 20, since: datetime | None = None) -> list[dict]:
     """
     pgvector cosine similarity search.
     Returns list of dicts with post_id, title, body, source,
     sentiment, topic, tool_mentioned, score, rank.
+    Optional `since` filters to posts created on or after that datetime.
     """
     query_embedding = _get_embedding(query)
+
+    date_filter = "AND r.created_at >= %s" if since else ""
+    params = [query_embedding, _DEMO_URL_PATTERNS]
+    if since:
+        params.append(since)
+    params += [query_embedding, limit]
 
     conn = get_pg_connection()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT
                     r.id         AS post_id,
                     r.title,
@@ -64,26 +72,34 @@ def semantic_search(query: str, limit: int = 20) -> list[dict]:
                     OR r.id LIKE 'demo_%%'
                     OR r.ingest_batch_id = 'demo_seed_batch'
                 )
+                {date_filter}
                 ORDER BY e.embedding <=> %s::vector
                 LIMIT %s
-            """, (query_embedding, _DEMO_URL_PATTERNS, query_embedding, limit))
+            """, params)
             rows = cur.fetchall()
             return [dict(row) for row in rows]
     finally:
         conn.close()
 
 
-def keyword_search(query: str, limit: int = 20) -> list[dict]:
+def keyword_search(query: str, limit: int = 20, since: datetime | None = None) -> list[dict]:
     """
     PostgreSQL full-text search using tsvector.
     Catches exact tool names and version numbers that
     semantic search often misses.
     Returns list of dicts with same schema as semantic_search.
+    Optional `since` filters to posts created on or after that datetime.
     """
+    date_filter = "AND r.created_at >= %s" if since else ""
+    params = [query, query, _DEMO_URL_PATTERNS]
+    if since:
+        params.append(since)
+    params += [limit]
+
     conn = get_pg_connection()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT
                     r.id         AS post_id,
                     r.title,
@@ -107,9 +123,10 @@ def keyword_search(query: str, limit: int = 20) -> list[dict]:
                         OR r.id LIKE 'demo_%%'
                         OR r.ingest_batch_id = 'demo_seed_batch'
                     )
+                    {date_filter}
                 ORDER BY similarity_score DESC
                 LIMIT %s
-            """, (query, query, _DEMO_URL_PATTERNS, limit))
+            """, params)
             rows = cur.fetchall()
             return [dict(row) for row in rows]
     finally:
@@ -147,7 +164,12 @@ def reciprocal_rank_fusion(
     ]
 
 
-def retrieve(query: str, limit: int = 20, expanded_queries: list[str] | None = None) -> list[dict]:
+def retrieve(
+    query: str,
+    limit: int = 20,
+    expanded_queries: list[str] | None = None,
+    since: datetime | None = None,
+) -> list[dict]:
     """
     Hybrid retrieval with optional query expansion.
 
@@ -158,6 +180,7 @@ def retrieve(query: str, limit: int = 20, expanded_queries: list[str] | None = N
         query: Original query string
         limit: Max results to return
         expanded_queries: Optional list of query variants from expand_query()
+        since: If set, only return posts created on or after this datetime.
 
     Returns:
         Top `limit` results ranked by RRF score.
@@ -169,8 +192,8 @@ def retrieve(query: str, limit: int = 20, expanded_queries: list[str] | None = N
     all_keyword = []
 
     for q in queries:
-        semantic = semantic_search(q, limit=limit)
-        keyword = keyword_search(q, limit=limit)
+        semantic = semantic_search(q, limit=limit, since=since)
+        keyword = keyword_search(q, limit=limit, since=since)
         all_semantic.extend(semantic)
         all_keyword.extend(keyword)
 

@@ -12,13 +12,13 @@ from slowapi.errors import RateLimitExceeded
 from api.auth.router import router as auth_router
 from api.config import validate_config
 from api.rate_limit import limiter
+from api.routes.admin import router as admin_router
 from api.routes.alerts import router as alerts_router
 from api.routes.cache import router as cache_router
 from api.routes.community import router as community_router
 from api.routes.health import router as health_router
 from api.routes.posts import router as posts_router
 from api.routes.query import router as query_router
-from api.routes.admin import router as admin_router
 from api.routes.reports import router as reports_router
 from api.routes.tools import router as tools_router
 from api.routes.trends import router as trends_router

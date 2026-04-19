@@ -1,7 +1,6 @@
 import logging
 import os
 from datetime import UTC, datetime
-from typing import Optional
 
 import duckdb
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -14,8 +13,8 @@ from api.schemas import (
     ToolComparisonResponse,
     ToolReportRequest,
     ToolReportResponse,
-    ToolStatSummary,
     ToolsListResponse,
+    ToolStatSummary,
 )
 from api.utils import duckdb_available
 from processing.llm_client import OPENAI_DEFAULT_MODEL, call_llm
@@ -30,7 +29,7 @@ async def compare_tools(
     request: Request,
     tools: str | None = Query(None, description="Comma-separated tool names e.g. pytorch,tensorflow"),
     days: int = Query(30, ge=1, le=90),
-    current_user: dict = Depends(get_current_user),
+    _: dict = Depends(get_current_user),
 ):
     """
     Side-by-side sentiment comparison from mart_tool_comparison.
@@ -101,7 +100,7 @@ async def compare_tools(
 @router.get("/tools/window", response_model=DataWindowResponse, tags=["data"])
 async def get_tools_window(
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    _: dict = Depends(get_current_user),
 ):
     """Return the available tool-comparison date window for dashboard lookback controls."""
     cache_key = make_cache_key("tools_window")

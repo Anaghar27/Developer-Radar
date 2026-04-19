@@ -263,7 +263,7 @@ Write a 3-5 paragraph insight report:"""
 
 # ── Main RAG pipeline ─────────────────────────────────────────────────────────
 
-def run_corrective_rag(query: str, limit: int = 10) -> dict:
+def run_corrective_rag(query: str, limit: int = 10, since: datetime | None = None) -> dict:
     """
     Full Corrective RAG pipeline with query expansion:
     1. Expand query into 4 variants (1 LLM call)
@@ -273,19 +273,25 @@ def run_corrective_rag(query: str, limit: int = 10) -> dict:
     5. Cross-encoder reranking (local, no API calls)
     6. Insight generation via OpenAI (1 LLM call)
 
+    Args:
+        since: If set, restrict retrieval to posts created on or after this datetime.
+               Use this for time-bounded reports (e.g. weekly report = last 7 days).
+
     Returns dict with report, sources_used, generated_at, query_variants.
     """
     query_hash = make_query_hash(query)
     tracker = LLMTracker(query=query, query_hash=query_hash)
 
     logger.info(f"Corrective RAG pipeline started for: '{query[:80]}'")
+    if since:
+        logger.info(f"Date filter active: posts since {since.isoformat()}")
 
     # Step 1 — Query expansion
     expanded_queries = expand_query(query)
     logger.info(f"Expanded to {len(expanded_queries)} query variants")
 
     # Step 2 — Initial retrieval with expanded queries
-    posts = retrieve(query, limit=INITIAL_LIMIT, expanded_queries=expanded_queries)
+    posts = retrieve(query, limit=INITIAL_LIMIT, expanded_queries=expanded_queries, since=since)
 
     # Step 3 — Batch relevance grading (10 posts per LLM call)
     avg_score, graded_posts = grade_relevance(query, posts)
@@ -296,7 +302,7 @@ def run_corrective_rag(query: str, limit: int = 10) -> dict:
             f"Avg relevance {avg_score:.3f} below threshold {RELEVANCE_THRESHOLD} "
             f"— retrying with wider search (limit={WIDE_LIMIT})"
         )
-        posts = retrieve(query, limit=WIDE_LIMIT, expanded_queries=expanded_queries)
+        posts = retrieve(query, limit=WIDE_LIMIT, expanded_queries=expanded_queries, since=since)
         avg_score, graded_posts = grade_relevance(query, posts)
         logger.info(f"Retry avg relevance: {avg_score:.3f}")
 

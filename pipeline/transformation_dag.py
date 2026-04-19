@@ -1,7 +1,7 @@
 import logging
 import os
 import subprocess
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime, timedelta
 
 import duckdb
 from airflow import DAG
@@ -61,8 +61,8 @@ wait_for_ingestion = ExternalTaskSensor(
     allowed_states=["success"],
     failed_states=["failed", "skipped"],
     execution_date_fn=_ingestion_execution_date,
-    mode="poke",
-    poke_interval=30,
+    mode="reschedule",
+    poke_interval=60,
     timeout=3600,
     dag=dag,
 )
@@ -216,8 +216,9 @@ def _weekly_report(**context):
     from storage.db_client import insert_insight_report
 
     query = "What are the key developer sentiment trends and tool discussions from the past week?"
+    since = datetime.now(UTC) - timedelta(days=7)
     try:
-        result = run_corrective_rag(query, limit=15)
+        result = run_corrective_rag(query, limit=15, since=since)
         source_items = [{"label": src, "url": src} for src in result.get("sources_used", [])]
         formatted_report = format_report_for_presentation(
             report_text=result["report"],
@@ -241,18 +242,29 @@ def _weekly_report(**context):
             ).df()
         finally:
             conn.close()
-        pdf_bytes = render_weekly_report_pdf(
-            {
-                "query": query,
-                "report_text": result["report"],
-                "formatted_report_text": formatted_report,
-                "generated_at": result["generated_at"].isoformat()
-                if hasattr(result["generated_at"], "isoformat")
-                else result["generated_at"],
-            },
-            source_items,
-            build_pdf_chart_figures(trends_df),
-        )
+        try:
+            chart_figures = build_pdf_chart_figures(trends_df)
+            pdf_bytes = render_weekly_report_pdf(
+                {
+                    "query": query,
+                    "report_text": result["report"],
+                    "formatted_report_text": formatted_report,
+                    "generated_at": result["generated_at"].isoformat()
+                    if hasattr(result["generated_at"], "isoformat")
+                    else result["generated_at"],
+                },
+                source_items,
+                chart_figures,
+            )
+        except (ModuleNotFoundError, RuntimeError) as exc:
+            logging.warning("PDF generation skipped — missing dependencies (%s)", exc)
+            pdf_bytes = None
+
+        if pdf_bytes:
+            logging.info("PDF generated: %.1f KB", len(pdf_bytes) / 1024)
+        else:
+            logging.warning("PDF not generated — report will be saved without PDF attachment")
+
         insert_insight_report(
             query=query,
             report_text=result["report"],
@@ -260,7 +272,12 @@ def _weekly_report(**context):
             formatted_report_text=formatted_report,
             report_pdf=pdf_bytes,
         )
-        logging.info(f"Weekly report generated: {result['report'][:200]}...")
+        logging.info(
+            "Weekly report saved to Postgres (pdf=%s, report_length=%d chars)",
+            f"{len(pdf_bytes) / 1024:.1f} KB" if pdf_bytes else "None",
+            len(result["report"]),
+        )
+        logging.info("Weekly report generated: %s...", result['report'][:200])
     except Exception as e:
         logging.error(f"Weekly report generation failed: {e}")
         raise

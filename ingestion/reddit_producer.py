@@ -32,6 +32,7 @@ def get_reddit_client() -> praw.Reddit:
         client_id=os.environ["REDDIT_CLIENT_ID"],
         client_secret=os.environ["REDDIT_CLIENT_SECRET"],
         user_agent=os.environ["REDDIT_USER_AGENT"],
+        requestor_kwargs={"timeout": 30},
     )
     reddit.read_only = True
     return reddit
