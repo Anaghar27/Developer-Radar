@@ -162,7 +162,7 @@ async def generate_tool_report(
 ):
     """
     Generate a plain-English tool decision report from community sentiment data.
-    Queries mart_tool_comparison in DuckDB, then calls the OpenAI LLM.
+    Queries mart_tool_comparison in DuckDB, then calls OpenRouter LLM.
     Rate-limited to 5 requests/minute per IP.
     """
     del request, current_user
@@ -234,12 +234,7 @@ Structure:
     Write for a senior developer audience. Be direct."""
 
     try:
-        narrative = call_llm(
-            prompt,
-            provider="openai",
-            model=OPENAI_DEFAULT_MODEL,
-            max_tokens=600,
-        )
+        narrative = call_llm(prompt, provider="openai", max_tokens=600)
     except Exception as e:
         logger.error(f"LLM call failed for tool report: {e}")
         raise HTTPException(status_code=502, detail="LLM call failed — try again shortly")
