@@ -447,6 +447,7 @@ def test_tool_report_success(client, auth_headers_non_admin, monkeypatch):
             pass
 
     monkeypatch.setattr(ddb, "connect", lambda *a, **kw: FakeConn())
+    monkeypatch.setattr("api.routes.tools.duckdb_available", lambda: True)
     monkeypatch.setattr("api.routes.tools.call_llm", lambda *a, **kw: "PyTorch wins.")
     resp = client.post(
         "/tools/report",
@@ -473,6 +474,7 @@ def test_tool_report_no_data_422(client, auth_headers_non_admin, monkeypatch):
             pass
 
     monkeypatch.setattr(ddb, "connect", lambda *a, **kw: FakeConn())
+    monkeypatch.setattr("api.routes.tools.duckdb_available", lambda: True)
     resp = client.post(
         "/tools/report",
         json={"tools": ["unknowntool99"], "days": 30},
